@@ -1,0 +1,25 @@
+[project]
+name = "pairpong"
+version = "0.0.1"
+epoch = "2.3"
+clarity-version = "2"
+requirements = []
+
+[contracts]
+"battle-leaderboard" = { path = "src/contracts/battle-leaderboard.clar" }
+"battle-nft" = { path = "src/contracts/battle-nft.clar" }
+"battle-betting" = {
+  path = "src/contracts/battle-betting.clar",
+  depends-on = ["battle-leaderboard"]
+}
+"sip-009-nft-trait" = { path = "src/sips/sip-009-nft-trait.clar" }
+
+[repl]
+costs = true
+parser = 0
+
+[network.testnet]
+cost-limit = 100000000
+
+[network.mainnet]
+cost-limit = 100000000

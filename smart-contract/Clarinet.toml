@@ -6,13 +6,10 @@ clarity-version = "2"
 requirements = []
 
 [contracts]
-"battle-leaderboard" = { path = "src/contracts/battle-leaderboard.clar" }
-"battle-nft" = { path = "src/contracts/battle-nft.clar" }
-"battle-betting" = {
-  path = "src/contracts/battle-betting.clar",
-  depends-on = ["battle-leaderboard"]
-}
-"sip-009-nft-trait" = { path = "src/sips/sip-009-nft-trait.clar" }
+battle-leaderboard = "src/contracts/battle-leaderboard.clar"
+sip-009-nft-trait = "src/sips/sip-009-nft-trait.clar"
+battle-nft = "src/contracts/battle-nft.clar"
+battle-betting = "src/contracts/battle-betting.clar"
 
 [repl]
 costs = true

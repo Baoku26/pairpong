@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Swords, Trophy, TrendingUp, TrendingDown } from "lucide-react";
 import "./App.css";
 
 const CANVAS_WIDTH = 600;
 const CANVAS_HEIGHT = 400;
-const PADDLE_WIDTH = 15;
+const PADDLE_WIDTH = 12;
+const PADDLE_OFFSET = 40; // Distance from canvas edge
 const BASE_PADDLE_HEIGHT = 100;
-const BALL_SIZE = 12;
-const BASE_SPEED = 6;
-const GAME_DURATION = 20000;
+const BALL_SIZE = 15;
+const BASE_SPEED = 10; // Increased from 6 to 10
+const GAME_DURATION = 40000; // Increased to 40 seconds
 const API_CALL_INTERVAL = 1000;
+const TRAIL_LENGTH = 12; // Increased trail for faster movement
 
 const CryptoPongBattle = () => {
   const [coins, setCoins] = useState([]);
@@ -17,7 +20,7 @@ const CryptoPongBattle = () => {
   const [coinB, setCoinB] = useState(null);
   const [priceData, setPriceData] = useState({});
   const [isRunning, setIsRunning] = useState(false);
-  const [timer, setTimer] = useState(20);
+  const [timer, setTimer] = useState(40);
   const [winner, setWinner] = useState(null);
   const [gameState, setGameState] = useState("idle");
   const [apiError, setApiError] = useState(null);
@@ -30,10 +33,16 @@ const CryptoPongBattle = () => {
   });
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
+  const [finalScoreA, setFinalScoreA] = useState(0);
+  const [finalScoreB, setFinalScoreB] = useState(0);
+  const [replaySnapshot, setReplaySnapshot] = useState(null);
 
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
   const lastApiCallRef = useRef(0);
+  const ballTrailRef = useRef([]);
+  const replayCanvasRef = useRef(null);
+  const replayAnimationRef = useRef(null);
   const gameStateRef = useRef({
     balls: [
       {
@@ -61,12 +70,10 @@ const CryptoPongBattle = () => {
   const rateLimitCheck = useCallback(() => {
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCallRef.current;
-
     if (timeSinceLastCall < API_CALL_INTERVAL) {
       const waitTime = API_CALL_INTERVAL - timeSinceLastCall;
       return new Promise((resolve) => setTimeout(resolve, waitTime));
     }
-
     lastApiCallRef.current = now;
     return Promise.resolve();
   }, []);
@@ -78,6 +85,8 @@ const CryptoPongBattle = () => {
 
       try {
         await rateLimitCheck();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(
           "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1",
@@ -86,18 +95,16 @@ const CryptoPongBattle = () => {
               Accept: "application/json",
               "Content-Type": "application/json",
             },
+            signal: controller.signal,
           }
         );
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        clearTimeout(timeoutId);
 
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error("Invalid data received from API");
-        }
+        if (!Array.isArray(data) || data.length === 0)
+          throw new Error("Invalid data");
 
         const formattedCoins = data.map((coin) => ({
           id: coin.id,
@@ -114,8 +121,7 @@ const CryptoPongBattle = () => {
         if (btc) setCoinA(btc);
         if (eth) setCoinB(eth);
       } catch (error) {
-        console.error(`Error fetching coins (attempt ${attempt}):`, error);
-
+        console.error(`[Coins Fetch] Attempt ${attempt}:`, error);
         if (attempt < 3) {
           setTimeout(() => {
             setRetryCount(attempt);
@@ -142,12 +148,12 @@ const CryptoPongBattle = () => {
   const fetchCurrentPrices = useCallback(
     async (attempt = 1) => {
       if (!coinA || !coinB) return;
-
       setLoadingPrices(true);
-      setApiError(null);
 
       try {
         await rateLimitCheck();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(
           `https://api.coingecko.com/api/v3/simple/price?ids=${coinA.id},${coinB.id}&vs_currencies=usd&include_24hr_change=true`,
@@ -156,31 +162,32 @@ const CryptoPongBattle = () => {
               Accept: "application/json",
               "Content-Type": "application/json",
             },
+            signal: controller.signal,
           }
         );
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
+        clearTimeout(timeoutId);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-
-        if (!data[coinA.id] || !data[coinB.id]) {
-          throw new Error("Invalid price data received");
-        }
+        if (!data[coinA.id] || !data[coinB.id])
+          throw new Error("Price data missing");
 
         setPriceData(data);
         setRetryCount(0);
+        setApiError(null);
       } catch (error) {
-        console.error(`Error fetching prices (attempt ${attempt}):`, error);
-
+        console.error(`[Price Fetch] Attempt ${attempt}:`, error);
         if (attempt < 3) {
           setTimeout(() => {
             setRetryCount(attempt);
             fetchCurrentPrices(attempt + 1);
           }, Math.pow(2, attempt) * 1000);
         } else {
-          setApiError(`Failed to load prices: ${error.message}`);
+          setApiError(
+            error.name === "AbortError"
+              ? "Request timeout"
+              : `Price fetch failed: ${error.message}`
+          );
         }
       } finally {
         setLoadingPrices(false);
@@ -192,6 +199,8 @@ const CryptoPongBattle = () => {
   const fetchHistoricalData = async (coin, days = 1, attempt = 1) => {
     try {
       await rateLimitCheck();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(
         `https://api.coingecko.com/api/v3/coins/${coin.id}/market_chart?vs_currency=usd&days=${days}`,
@@ -200,30 +209,22 @@ const CryptoPongBattle = () => {
             Accept: "application/json",
             "Content-Type": "application/json",
           },
+          signal: controller.signal,
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      clearTimeout(timeoutId);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-
       if (
         !data.prices ||
         !Array.isArray(data.prices) ||
         data.prices.length === 0
       ) {
-        throw new Error("Invalid historical data received");
+        throw new Error("No price history");
       }
-
       return data.prices;
     } catch (error) {
-      console.error(
-        `Error fetching historical data (attempt ${attempt}):`,
-        error
-      );
-
       if (attempt < 3) {
         await new Promise((resolve) =>
           setTimeout(resolve, Math.pow(2, attempt) * 1000)
@@ -239,37 +240,26 @@ const CryptoPongBattle = () => {
     const dataPoints = days * 24;
     const basePrice = 50000;
     const data = [];
-
     for (let i = 0; i < dataPoints; i++) {
       const timestamp = Date.now() - (dataPoints - i) * (60 * 60 * 1000);
       const price = basePrice * (1 + (Math.random() - 0.5) * 0.1);
       data.push([timestamp, price]);
     }
-
     return data;
   };
 
-  // Fetch prices on mount and when coins change
   useEffect(() => {
-    if (coinA && coinB) {
-      fetchCurrentPrices();
-    }
+    if (coinA && coinB) fetchCurrentPrices();
   }, [coinA, coinB, fetchCurrentPrices]);
 
-  // Periodic price updates every 10 seconds
   useEffect(() => {
     if (!coinA || !coinB) return;
-
-    const interval = setInterval(() => {
-      fetchCurrentPrices();
-    }, 10000); // Update every 10 seconds
-
+    const interval = setInterval(() => fetchCurrentPrices(), 30000);
     return () => clearInterval(interval);
   }, [coinA, coinB, fetchCurrentPrices]);
 
   useEffect(() => {
     if (!isRunning) return;
-
     const startTime = Date.now();
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;
@@ -278,14 +268,12 @@ const CryptoPongBattle = () => {
         Math.ceil((GAME_DURATION - elapsed) / 1000)
       );
       setTimer(remaining);
-
       if (remaining === 0 && !gameStateRef.current.endGameTriggered) {
         gameStateRef.current.endGameTriggered = true;
         clearInterval(interval);
         setTimeout(() => endGame(), 100);
       }
     }, 100);
-
     return () => clearInterval(interval);
   }, [isRunning]);
 
@@ -295,13 +283,99 @@ const CryptoPongBattle = () => {
       const ctx = canvas.getContext("2d");
       animateGame(ctx);
     }
-
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [gameState, historicalData]);
+
+  // Replay animation loop
+  useEffect(() => {
+    if (gameState === "ended" && replaySnapshot && replayCanvasRef.current) {
+      const canvas = replayCanvasRef.current;
+      const ctx = canvas.getContext("2d");
+      let frame = 0;
+      const maxFrames = 60;
+
+      const animateReplay = () => {
+        frame++;
+        if (frame > maxFrames) frame = 0;
+
+        const progress = frame / maxFrames;
+
+        // Clear canvas
+        ctx.fillStyle = "#2A6E40";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw center line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Scale factor for smaller canvas
+        const scale = canvas.width / CANVAS_WIDTH;
+
+        // Animate ball moving toward losing side
+        const ballX =
+          winner === "A"
+            ? replaySnapshot.ballX * scale +
+              (canvas.width - replaySnapshot.ballX * scale) * progress
+            : replaySnapshot.ballX * scale -
+              replaySnapshot.ballX * scale * progress;
+        const ballY = replaySnapshot.ballY * scale;
+
+        // Draw paddles
+        const paddleRadius = (PADDLE_WIDTH / 2) * scale;
+        ctx.fillStyle = "#FFFFFF";
+        ctx.beginPath();
+        ctx.roundRect(
+          PADDLE_OFFSET * scale,
+          replaySnapshot.paddleAY * scale,
+          PADDLE_WIDTH * scale,
+          replaySnapshot.paddleAHeight * scale,
+          paddleRadius
+        );
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.roundRect(
+          canvas.width - (PADDLE_OFFSET + PADDLE_WIDTH) * scale,
+          replaySnapshot.paddleBY * scale,
+          PADDLE_WIDTH * scale,
+          replaySnapshot.paddleBHeight * scale,
+          paddleRadius
+        );
+        ctx.fill();
+
+        // Draw ball
+        const ballRadius = (BALL_SIZE / 2) * scale;
+        ctx.fillStyle = "#F5C542";
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#E0A020";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        replayAnimationRef.current = requestAnimationFrame(animateReplay);
+      };
+
+      animateReplay();
+
+      return () => {
+        if (replayAnimationRef.current) {
+          cancelAnimationFrame(replayAnimationRef.current);
+        }
+      };
+    }
+  }, [gameState, replaySnapshot, winner]);
 
   const startGame = async () => {
     if (!coinA || !coinB) {
@@ -329,13 +403,14 @@ const CryptoPongBattle = () => {
       }
 
       setHistoricalData({ coinA: sampledA, coinB: sampledB });
-
       setIsRunning(true);
       setGameState("battling");
-      setTimer(20);
+      setTimer(40);
       setWinner(null);
       setScoreA(0);
       setScoreB(0);
+      setFinalScoreA(0);
+      setFinalScoreB(0);
 
       gameStateRef.current = {
         balls: [
@@ -360,8 +435,9 @@ const CryptoPongBattle = () => {
         gameStartTime: Date.now(),
         endGameTriggered: false,
       };
+
+      ballTrailRef.current = [];
     } catch (error) {
-      console.error("Error starting game:", error);
       setApiError("Failed to start battle. Please try again.");
     } finally {
       setLoadingHistorical(false);
@@ -370,23 +446,80 @@ const CryptoPongBattle = () => {
 
   const endGame = () => {
     setIsRunning(false);
-    setGameState("ended");
 
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
 
     const state = gameStateRef.current;
     const changeA = state.totalChangeA;
     const changeB = state.totalChangeB;
 
+    // Determine winner and award final point
+    let winnerSide = null;
     if (Math.abs(changeA - changeB) < 0.5) {
-      setWinner("TIE");
+      winnerSide = "TIE";
     } else if (changeA > changeB) {
-      setWinner("A");
+      winnerSide = "A";
+      setScoreA((prev) => prev + 1); // Award winning point
     } else {
-      setWinner("B");
+      winnerSide = "B";
+      setScoreB((prev) => prev + 1); // Award winning point
     }
+
+    // Capture final scores after awarding point
+    setTimeout(() => {
+      setFinalScoreA(winnerSide === "A" ? scoreA + 1 : scoreA);
+      setFinalScoreB(winnerSide === "B" ? scoreB + 1 : scoreB);
+      setWinner(winnerSide);
+      setGameState("ended");
+
+      // Capture replay snapshot
+      setReplaySnapshot({
+        ballX: state.balls[0].x,
+        ballY: state.balls[0].y,
+        paddleAY: state.paddleAY,
+        paddleBY: state.paddleBY,
+        paddleAHeight: state.paddleAHeight,
+        paddleBHeight: state.paddleBHeight,
+      });
+    }, 50);
+  };
+
+  const resetGame = () => {
+    setGameState("idle");
+    setWinner(null);
+    setScoreA(0);
+    setScoreB(0);
+    setFinalScoreA(0);
+    setFinalScoreB(0);
+    setTimer(40);
+    setReplaySnapshot(null);
+    if (replayAnimationRef.current) {
+      cancelAnimationFrame(replayAnimationRef.current);
+    }
+    gameStateRef.current = {
+      balls: [
+        {
+          x: CANVAS_WIDTH / 2,
+          y: CANVAS_HEIGHT / 2,
+          velX: BASE_SPEED,
+          velY: BASE_SPEED,
+        },
+      ],
+      paddleAY: CANVAS_HEIGHT / 2 - BASE_PADDLE_HEIGHT / 2,
+      paddleBY: CANVAS_HEIGHT / 2 - BASE_PADDLE_HEIGHT / 2,
+      paddleAHeight: BASE_PADDLE_HEIGHT,
+      paddleBHeight: BASE_PADDLE_HEIGHT,
+      paddleASpeed: 1,
+      paddleBSpeed: 1,
+      priceChangePercentA: 0,
+      priceChangePercentB: 0,
+      priceDataIndex: 0,
+      totalChangeA: 0,
+      totalChangeB: 0,
+      gameStartTime: null,
+      endGameTriggered: false,
+    };
+    ballTrailRef.current = [];
   };
 
   const animateGame = (ctx) => {
@@ -394,11 +527,10 @@ const CryptoPongBattle = () => {
     if (!canvas) return;
 
     const state = gameStateRef.current;
-
     ctx.fillStyle = "#2A6E40";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.strokeStyle = "#FFFFFF";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
     ctx.setLineDash([10, 10]);
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -407,7 +539,6 @@ const CryptoPongBattle = () => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Update price-based mechanics
     const elapsed = Date.now() - state.gameStartTime;
     const progressRatio = elapsed / GAME_DURATION;
     const dataIndex = Math.floor(
@@ -440,7 +571,6 @@ const CryptoPongBattle = () => {
       state.priceChangePercentA = changeA;
       state.priceChangePercentB = changeB;
 
-      // Dynamic paddle heights based on performance
       state.paddleAHeight = Math.max(
         60,
         Math.min(160, BASE_PADDLE_HEIGHT + state.totalChangeA * 5)
@@ -449,12 +579,9 @@ const CryptoPongBattle = () => {
         60,
         Math.min(160, BASE_PADDLE_HEIGHT + state.totalChangeB * 5)
       );
-
-      // Paddle speed based on volatility
       state.paddleASpeed = 1 + Math.abs(changeA) / 5;
       state.paddleBSpeed = 1 + Math.abs(changeB) / 5;
 
-      // Adjust ball speeds based on momentum
       const volatilityA = Math.abs(changeA);
       const volatilityB = Math.abs(changeB);
       const totalVolatility = volatilityA + volatilityB;
@@ -466,8 +593,13 @@ const CryptoPongBattle = () => {
       });
     }
 
-    // Update and draw balls
     state.balls.forEach((ball) => {
+      // Add current position to trail
+      ballTrailRef.current.push({ x: ball.x, y: ball.y });
+      if (ballTrailRef.current.length > TRAIL_LENGTH) {
+        ballTrailRef.current.shift();
+      }
+
       ball.x += ball.velX;
       ball.y += ball.velY;
 
@@ -475,9 +607,9 @@ const CryptoPongBattle = () => {
         ball.velY = -ball.velY;
       }
 
-      // Paddle collision with angle adjustment
+      // Paddle collision with updated positions
       if (
-        ball.x - BALL_SIZE / 2 <= PADDLE_WIDTH &&
+        ball.x - BALL_SIZE / 2 <= PADDLE_OFFSET + PADDLE_WIDTH &&
         ball.y >= state.paddleAY &&
         ball.y <= state.paddleAY + state.paddleAHeight &&
         !state.endGameTriggered
@@ -488,7 +620,7 @@ const CryptoPongBattle = () => {
       }
 
       if (
-        ball.x + BALL_SIZE / 2 >= CANVAS_WIDTH - PADDLE_WIDTH &&
+        ball.x + BALL_SIZE / 2 >= CANVAS_WIDTH - PADDLE_OFFSET - PADDLE_WIDTH &&
         ball.y >= state.paddleBY &&
         ball.y <= state.paddleBY + state.paddleBHeight &&
         !state.endGameTriggered
@@ -498,46 +630,59 @@ const CryptoPongBattle = () => {
         ball.velY = hitPos * BASE_SPEED * 2;
       }
 
-      // Scoring
       if (ball.x <= 0) {
         setScoreB((prev) => prev + 1);
         ball.x = CANVAS_WIDTH / 2;
         ball.y = CANVAS_HEIGHT / 2;
         ball.velX = BASE_SPEED;
         ball.velY = BASE_SPEED * (Math.random() > 0.5 ? 1 : -1);
+        ballTrailRef.current = [];
       } else if (ball.x >= CANVAS_WIDTH) {
         setScoreA((prev) => prev + 1);
         ball.x = CANVAS_WIDTH / 2;
         ball.y = CANVAS_HEIGHT / 2;
         ball.velX = -BASE_SPEED;
         ball.velY = BASE_SPEED * (Math.random() > 0.5 ? 1 : -1);
+        ballTrailRef.current = [];
       }
 
-      // Draw ball with glow
-      const gradient = ctx.createRadialGradient(
-        ball.x,
-        ball.y,
-        0,
-        ball.x,
-        ball.y,
-        BALL_SIZE * 2
-      );
-      gradient.addColorStop(0, "#F5C542");
-      gradient.addColorStop(0.5, "#F5C542");
-      gradient.addColorStop(1, "rgba(245, 197, 66, 0)");
+      // Draw trail
+      ballTrailRef.current.forEach((pos, index) => {
+        const alpha = (index + 1) / TRAIL_LENGTH;
+        const trailSize = BALL_SIZE * (0.3 + alpha * 0.7);
 
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_SIZE * 2, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.fillStyle = `rgba(245, 197, 66, ${alpha * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, trailSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
 
+      // Draw ball with 2D cartoon style (flat with outline)
       ctx.fillStyle = "#F5C542";
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
       ctx.fill();
+
+      // Add outline/border
+      ctx.strokeStyle = "#E0A020";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Add highlight for cartoon effect
+      ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.beginPath();
+      ctx.arc(
+        ball.x - BALL_SIZE / 6,
+        ball.y - BALL_SIZE / 6,
+        BALL_SIZE / 4,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
     });
 
-    // Smart paddle AI with urgency tracking
     if (!state.endGameTriggered) {
       const closestBallA = state.balls.reduce((closest, ball) => {
         if (ball.x < CANVAS_WIDTH / 2 && ball.velX < 0) {
@@ -555,20 +700,22 @@ const CryptoPongBattle = () => {
 
       if (closestBallA) {
         const targetA = closestBallA.y - state.paddleAHeight / 2;
-        const distance = Math.abs(closestBallA.x - PADDLE_WIDTH);
-        const urgency = Math.max(0.05, 1 - distance / (CANVAS_WIDTH / 2));
+        const distance = Math.abs(
+          closestBallA.x - (PADDLE_OFFSET + PADDLE_WIDTH)
+        );
+        const urgency = Math.max(0.1, 1 - distance / (CANVAS_WIDTH / 2));
         state.paddleAY +=
-          (targetA - state.paddleAY) * 0.15 * state.paddleASpeed * urgency;
+          (targetA - state.paddleAY) * 0.25 * state.paddleASpeed * urgency; // Increased from 0.15 to 0.25
       }
 
       if (closestBallB) {
         const targetB = closestBallB.y - state.paddleBHeight / 2;
         const distance = Math.abs(
-          closestBallB.x - (CANVAS_WIDTH - PADDLE_WIDTH)
+          closestBallB.x - (CANVAS_WIDTH - PADDLE_OFFSET - PADDLE_WIDTH)
         );
-        const urgency = Math.max(0.05, 1 - distance / (CANVAS_WIDTH / 2));
+        const urgency = Math.max(0.1, 1 - distance / (CANVAS_WIDTH / 2));
         state.paddleBY +=
-          (targetB - state.paddleBY) * 0.15 * state.paddleBSpeed * urgency;
+          (targetB - state.paddleBY) * 0.25 * state.paddleBSpeed * urgency; // Increased from 0.15 to 0.25
       }
     }
 
@@ -581,52 +728,35 @@ const CryptoPongBattle = () => {
       Math.min(CANVAS_HEIGHT - state.paddleBHeight, state.paddleBY)
     );
 
-    // Draw paddles
-    ctx.fillStyle = "#3BA76F";
-    ctx.fillRect(0, state.paddleAY, PADDLE_WIDTH, state.paddleAHeight);
+    // Draw paddles with rounded edges (white)
+    const paddleRadius = PADDLE_WIDTH / 2;
 
-    ctx.fillStyle = "#F5C542";
-    ctx.fillRect(
-      CANVAS_WIDTH - PADDLE_WIDTH,
+    // Left paddle (Coin A)
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.roundRect(
+      PADDLE_OFFSET,
+      state.paddleAY,
+      PADDLE_WIDTH,
+      state.paddleAHeight,
+      paddleRadius
+    );
+    ctx.fill();
+
+    // Right paddle (Coin B)
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.roundRect(
+      CANVAS_WIDTH - PADDLE_OFFSET - PADDLE_WIDTH,
       state.paddleBY,
       PADDLE_WIDTH,
-      state.paddleBHeight
+      state.paddleBHeight,
+      paddleRadius
     );
-
-    // Draw price change indicators on canvas
-    ctx.font = "10px monospace";
-    ctx.fillStyle = state.priceChangePercentA >= 0 ? "#A8F0A2" : "#FF7676";
-    ctx.fillText(
-      `${state.priceChangePercentA >= 0 ? "↑" : "↓"} ${Math.abs(
-        state.priceChangePercentA
-      ).toFixed(2)}%`,
-      20,
-      25
-    );
-
-    ctx.fillStyle = state.priceChangePercentB >= 0 ? "#A8F0A2" : "#FF7676";
-    ctx.fillText(
-      `${state.priceChangePercentB >= 0 ? "↑" : "↓"} ${Math.abs(
-        state.priceChangePercentB
-      ).toFixed(2)}%`,
-      CANVAS_WIDTH - 75,
-      25
-    );
-
-    // Draw total performance
-    ctx.font = "8px monospace";
-    ctx.fillStyle = "#9EB39F";
-    ctx.fillText(`Total: ${state.totalChangeA.toFixed(2)}%`, 20, 40);
-    ctx.fillText(
-      `Total: ${state.totalChangeB.toFixed(2)}%`,
-      CANVAS_WIDTH - 75,
-      40
-    );
+    ctx.fill();
 
     animationRef.current = requestAnimationFrame(() => animateGame(ctx));
   };
-
-  const getCoinName = (coin) => coin?.symbol || "N/A";
 
   const formatPrice = (coinId) => {
     const price = priceData[coinId]?.usd;
@@ -640,208 +770,235 @@ const CryptoPongBattle = () => {
 
   const formatChange = (coinId) => {
     const change = priceData[coinId]?.usd_24h_change;
-    if (!change) return "↑ 0.0%";
-    const arrow = change >= 0 ? "↑" : "↓";
-    return `${arrow} ${Math.abs(change).toFixed(2)}%`;
+    return change || 0;
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2A6E40] to-[#1F2E1F] p-8 font-['Press_Start_2P']">
-      <link
-        href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
-        rel="stylesheet"
-      />
+    <div className="min-h-screen bg-white p-4 sm:p-8">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;700&display=swap');
+        
+        body {
+          font-family: 'Press Start 2P', monospace;
+        }
+        
+        .body-text {
+          font-family: 'Press Start 2P', monospace;
+          font-size: 0.75rem;
+          line-height: 1.5;
+        }
+        
+        .heading-font {
+          font-family: 'Orbitron', monospace;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+        }
+      `}</style>
 
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl text-[#A8F0A2] text-center mb-8 drop-shadow-lg">
+        <h1 className="heading-font text-2xl sm:text-3xl md:text-4xl text-white text-center mb-4 sm:mb-8 tracking-wider">
           CRYPTO PONG BATTLE
         </h1>
 
         {apiError && (
-          <div className="mb-4 p-3 bg-red-900/50 border border-red-500 rounded-lg text-red-200 text-xs">
+          <div className="mb-4 p-3 bg-[#FF7676]/20 border-2 border-[#FF7676] rounded text-[#FF7676] text-sm">
             {apiError}
           </div>
         )}
 
-        {retryCount > 0 && (
-          <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-500 rounded-lg text-yellow-200 text-xs">
-            Retrying... (Attempt {retryCount}/3)
-          </div>
-        )}
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-3 space-y-4">
-            <div className="bg-[#26462F] rounded-lg p-4 shadow-lg border-2 border-[#3BA76F]">
-              <label className="block text-[#A8F0A2] text-xs mb-2">
-                Coin A{" "}
-                {isLoadingCoins && (
-                  <span className="text-yellow-400">Loading...</span>
-                )}
-              </label>
-              <select
-                value={coinA?.id || ""}
-                onChange={(e) =>
-                  setCoinA(coins.find((c) => c.id === e.target.value))
-                }
-                disabled={isRunning || isLoadingCoins}
-                className="w-full bg-[#1F2E1F] text-white border border-[#3BA76F] rounded p-2 text-xs focus:outline-none focus:border-[#F5C542]"
-              >
-                {isLoadingCoins ? (
-                  <option>Loading coins...</option>
-                ) : (
-                  coins.map((coin) => (
-                    <option key={coin.id} value={coin.id}>
-                      {coin.symbol} - {coin.name}
-                    </option>
-                  ))
-                )}
-              </select>
+          {/* Left Panel - Mobile: Below canvas */}
+          <div className="lg:col-span-3 order-2 lg:order-1 space-y-4">
+            {/* Battle Settings - Compact on Mobile */}
+            <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-3 sm:p-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-1">
+                {/* Coin A */}
+                <div>
+                  <label className="block text-white text-xs mb-1">
+                    Coin A
+                  </label>
+                  <select
+                    value={coinA?.id || ""}
+                    onChange={(e) =>
+                      setCoinA(coins.find((c) => c.id === e.target.value))
+                    }
+                    disabled={
+                      isRunning || isLoadingCoins || gameState === "ended"
+                    }
+                    className="w-full bg-[#1F2E1F] text-white border-2 border-[#3BA76F] rounded p-1.5 sm:p-2 text-xs focus:outline-none focus:border-[#F5C542] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingCoins ? (
+                      <option>Loading...</option>
+                    ) : (
+                      coins.map((coin) => (
+                        <option key={coin.id} value={coin.id}>
+                          {coin.symbol}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
 
-              <label className="block text-[#A8F0A2] text-xs mb-2 mt-4">
-                Coin B{" "}
-                {isLoadingCoins && (
-                  <span className="text-yellow-400">Loading...</span>
-                )}
-              </label>
-              <select
-                value={coinB?.id || ""}
-                onChange={(e) =>
-                  setCoinB(coins.find((c) => c.id === e.target.value))
-                }
-                disabled={isRunning || isLoadingCoins}
-                className="w-full bg-[#1F2E1F] text-white border border-[#3BA76F] rounded p-2 text-xs focus:outline-none focus:border-[#F5C542]"
-              >
-                {isLoadingCoins ? (
-                  <option>Loading coins...</option>
-                ) : (
-                  coins.map((coin) => (
-                    <option key={coin.id} value={coin.id}>
-                      {coin.symbol} - {coin.name}
-                    </option>
-                  ))
-                )}
-              </select>
+                {/* Coin B */}
+                <div>
+                  <label className="block text-white text-xs mb-1">
+                    Coin B
+                  </label>
+                  <select
+                    value={coinB?.id || ""}
+                    onChange={(e) =>
+                      setCoinB(coins.find((c) => c.id === e.target.value))
+                    }
+                    disabled={
+                      isRunning || isLoadingCoins || gameState === "ended"
+                    }
+                    className="w-full bg-[#1F2E1F] text-white border-2 border-[#3BA76F] rounded p-1.5 sm:p-2 text-xs focus:outline-none focus:border-[#F5C542] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingCoins ? (
+                      <option>Loading...</option>
+                    ) : (
+                      coins.map((coin) => (
+                        <option key={coin.id} value={coin.id}>
+                          {coin.symbol}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
 
-              <button
-                onClick={startGame}
-                disabled={isRunning || isLoadingCoins || loadingHistorical}
-                className="w-full mt-4 bg-[#3BA76F] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded transition-all text-xs font-bold"
-              >
-                {loadingHistorical ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Loading Data...
-                  </div>
-                ) : isLoadingCoins ? (
-                  "LOADING..."
-                ) : isRunning ? (
-                  "BATTLING"
-                ) : (
-                  "START"
-                )}
-              </button>
+              {/* Button */}
+              {gameState === "ended" ? (
+                <button
+                  onClick={resetGame}
+                  className="w-full mt-3 bg-[#3BA76F] hover:brightness-110 text-white py-2 sm:py-3 rounded transition-all text-xs font-bold border-2 border-[#3BA76F]"
+                >
+                  NEW BATTLE
+                </button>
+              ) : (
+                <button
+                  onClick={startGame}
+                  disabled={isRunning || isLoadingCoins || loadingHistorical}
+                  className="w-full mt-3 bg-[#3BA76F] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 sm:py-3 rounded transition-all text-xs font-bold border-2 border-[#3BA76F]"
+                >
+                  {loadingHistorical
+                    ? "LOADING..."
+                    : isRunning
+                    ? "BATTLING"
+                    : "START"}
+                </button>
+              )}
             </div>
 
-            <div className="bg-[#26462F] rounded-lg p-4 shadow-lg border-2 border-[#3BA76F] space-y-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[#A8F0A2] text-xs">Live Prices</div>
+            {/* Live Prices - Horizontal on Mobile */}
+            <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-3 sm:p-4">
+              <div className="flex flex-rowjustify-between items-center mb-2">
+                <span className="text-white text-xs">Live Prices</span>
                 {loadingPrices && (
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 border border-[#F5C542] border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[#F5C542] text-xs">Updating...</span>
-                  </div>
+                  <div className="w-2 h-2 bg-[#F5C542] rounded-full animate-pulse"></div>
                 )}
               </div>
 
-              <div>
-                <div className="text-[#A8F0A2] text-xs mb-1">
-                  {getCoinName(coinA)}
-                </div>
-                <div className="text-white text-sm">
-                  {formatPrice(coinA?.id)}
-                </div>
-                <div
-                  className={`text-xs ${
-                    (priceData[coinA?.id]?.usd_24h_change || 0) >= 0
-                      ? "text-[#A8F0A2]"
-                      : "text-[#FF7676]"
-                  }`}
-                >
-                  {formatChange(coinA?.id)}
-                </div>
-              </div>
-
-              <div className="border-t border-[#3BA76F] pt-3">
-                <div className="text-[#A8F0A2] text-xs mb-1">
-                  {getCoinName(coinB)}
-                </div>
-                <div className="text-white text-sm">
-                  {formatPrice(coinB?.id)}
-                </div>
-                <div
-                  className={`text-xs ${
-                    (priceData[coinB?.id]?.usd_24h_change || 0) >= 0
-                      ? "text-[#A8F0A2]"
-                      : "text-[#FF7676]"
-                  }`}
-                >
-                  {formatChange(coinB?.id)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-6 space-y-4">
-            {gameState === "battling" && (
-              <div className="flex justify-between items-center">
-                <div className="text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
+                {/* Coin A Price */}
+                <div className="text-center lg:text-left">
+                  <div className="text-[#A8F0A2] text-xs mb-1">
+                    {coinA?.symbol || "BTC"}
+                  </div>
+                  <div className="text-white text-sm sm:text-lg font-bold">
+                    {formatPrice(coinA?.id)}
+                  </div>
                   <div
-                    className={`text-lg ${
-                      (gameStateRef.current.totalChangeA || 0) >= 0
+                    className={`flex items-center justify-center lg:justify-start gap-1 text-xs ${
+                      formatChange(coinA?.id) >= 0
                         ? "text-[#A8F0A2]"
                         : "text-[#FF7676]"
                     }`}
                   >
-                    {getCoinName(coinA)}
+                    {formatChange(coinA?.id) >= 0 ? (
+                      <TrendingUp size={10} />
+                    ) : (
+                      <TrendingDown size={10} />
+                    )}
+                    {Math.abs(formatChange(coinA?.id)).toFixed(2)}%
                   </div>
-                  <div className="text-xs text-[#9EB39F]">
+                </div>
+
+                {/* Coin B Price */}
+                <div className="text-center lg:text-left border-l lg:border-l-0 lg:border-t border-[#3BA76F] pl-3 lg:pl-0 lg:pt-3">
+                  <div className="text-[#F5C542] text-xs mb-1">
+                    {coinB?.symbol || "ETH"}
+                  </div>
+                  <div className="text-white text-sm sm:text-lg font-bold">
+                    {formatPrice(coinB?.id)}
+                  </div>
+                  <div
+                    className={`flex items-center justify-center lg:justify-start gap-1 text-xs ${
+                      formatChange(coinB?.id) >= 0
+                        ? "text-[#A8F0A2]"
+                        : "text-[#FF7676]"
+                    }`}
+                  >
+                    {formatChange(coinB?.id) >= 0 ? (
+                      <TrendingUp size={10} />
+                    ) : (
+                      <TrendingDown size={10} />
+                    )}
+                    {Math.abs(formatChange(coinB?.id)).toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center Panel - Mobile: First priority */}
+          <div className="lg:col-span-6 order-1 lg:order-2 space-y-4">
+            {gameState === "battling" && (
+              <div className="flex flex-row sm:flex-row justify-between items-start px-2 sm:px-2 gap-1 sm:gap-0">
+                <div className="text-center">
+                  <div className="text-[#A8F0A2] text-sm sm:text-lg font-bold">
+                    {coinA?.symbol || "BTC"}
+                  </div>
+                  <div className="text-[#9EB39F] text-xs">
                     {gameStateRef.current.totalChangeA?.toFixed(2) || "0.00"}%
                   </div>
-                  <div className="text-2xl font-bold text-[#3BA76F] mt-1">
+                  <div className="text-white text-xl sm:text-2xl font-bold">
                     {scoreA}
                   </div>
                 </div>
 
-                <div className="bg-[#1F2E1F] px-6 py-2 rounded text-white text-lg">
-                  {timer}
+                <div className="bg-[#1F2E1F] border-2 border-[#3BA76F] px-4 sm:px-8 py-2 sm:py-3 rounded">
+                  <div className="text-white text-2xl sm:text-3xl font-bold">
+                    {timer}:00
+                  </div>
                 </div>
 
                 <div className="text-center">
-                  <div
-                    className={`text-lg ${
-                      (gameStateRef.current.totalChangeB || 0) >= 0
-                        ? "text-[#A8F0A2]"
-                        : "text-[#FF7676]"
-                    }`}
-                  >
-                    {getCoinName(coinB)}
+                  <div className="text-[#F5C542] text-sm sm:text-lg font-bold">
+                    {coinB?.symbol || "ETH"}
                   </div>
-                  <div className="text-xs text-[#9EB39F]">
+                  <div className="text-[#9EB39F] text-xs">
                     {gameStateRef.current.totalChangeB?.toFixed(2) || "0.00"}%
                   </div>
-                  <div className="text-2xl font-bold text-[#F5C542] mt-1">
+                  <div className="text-white text-xl sm:text-2xl font-bold">
                     {scoreB}
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="bg-[#2A6E40] rounded-xl shadow-2xl border-4 border-[#26462F] overflow-hidden">
+            <div className="bg-[#1F4A54] rounded border-4 border-[#26462F] overflow-hidden shadow-xl">
               {gameState === "idle" && (
-                <div className="aspect-[3/2] flex flex-col items-center justify-center">
-                  <div className="text-6xl mb-6">⚔️</div>
-                  <div className="text-white text-2xl mb-2">Start a Battle</div>
-                  <div className="text-[#9EB39F] text-xs">
+                <div className="aspect-[3/2] flex flex-col items-center justify-center bg-[#2A6E40] p-4">
+                  <Swords
+                    size={60}
+                    className="sm:w-20 sm:h-20 text-white mb-4 sm:mb-6"
+                    strokeWidth={1.5}
+                  />
+                  <div className="heading-font text-white text-xl sm:text-3xl mb-2 text-center">
+                    Start a Battle
+                  </div>
+                  <div className="text-[#9EB39F] text-xs sm:text-sm text-center">
                     Select coins and press START
                   </div>
                 </div>
@@ -857,70 +1014,109 @@ const CryptoPongBattle = () => {
               )}
 
               {gameState === "ended" && (
-                <div className="aspect-[3/2] flex flex-col items-center justify-center">
-                  <div className="text-4xl mb-4">WINNER 🏆</div>
-                  <div className="text-6xl text-white mb-4">
-                    {winner === "TIE"
-                      ? "TIE"
-                      : getCoinName(winner === "A" ? coinA : coinB)}
+                <div className="aspect-[3/2] flex flex-col items-center justify-center bg-[#2A6E40] p-4 sm:p-8">
+                  {/* Trophy Icon - Visual Hierarchy Top */}
+                  <Trophy
+                    size={48}
+                    className="sm:w-16 sm:h-16 text-[#F5C542] mb-3 sm:mb-4"
+                    strokeWidth={1.5}
+                  />
+
+                  {/* Winner Announcement - Primary Focus */}
+                  <div className="text-center mb-4 sm:mb-6">
+                    <div className="heading-font text-[#9EB39F] text-xs sm:text-sm mb-2">
+                      WINNER
+                    </div>
+                    <div className="heading-font text-[#F5C542] text-4xl sm:text-6xl mb-2 sm:mb-3">
+                      {winner === "TIE"
+                        ? "TIE"
+                        : winner === "A"
+                        ? coinA?.symbol
+                        : coinB?.symbol}
+                    </div>
+                    <div className="text-white text-xl sm:text-2xl font-bold mb-2">
+                      {finalScoreA} - {finalScoreB}
+                    </div>
+                    <div className="text-[#9EB39F] text-xs sm:text-sm">
+                      {winner === "TIE"
+                        ? "Equal Performance"
+                        : `${(winner === "A"
+                            ? gameStateRef.current.totalChangeA
+                            : gameStateRef.current.totalChangeB
+                          )?.toFixed(2)}% Price Change`}
+                    </div>
                   </div>
-                  <div className="text-[#9EB39F] text-sm mb-2">
-                    {winner === "TIE"
-                      ? "Equal Performance"
-                      : `Performance: ${
-                          winner === "A"
-                            ? gameStateRef.current.totalChangeA.toFixed(2)
-                            : gameStateRef.current.totalChangeB.toFixed(2)
-                        }%`}
-                  </div>
-                  <div className="text-[#A8F0A2] text-xs">
-                    Final Score: {scoreA} - {scoreB}
-                  </div>
+
+                  {/* Replay TV Box - Secondary Element */}
+                  {winner !== "TIE" && replaySnapshot && (
+                    <div className="flex flex-col items-center w-full max-w-xs">
+                      <div className="text-[#A8F0A2] text-xs mb-2 tracking-wider">
+                        ▶ WINNING MOMENT
+                      </div>
+                      <div className="border-4 border-[#1F2E1F] rounded-lg overflow-hidden bg-[#1F2E1F] shadow-xl w-full">
+                        <canvas
+                          ref={replayCanvasRef}
+                          width={180}
+                          height={120}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="lg:col-span-3">
-            <div className="bg-[#26462F] rounded-lg p-4 shadow-lg border-2 border-[#3BA76F]">
-              <div className="text-[#A8F0A2] text-xs mb-4">BATTLE RESULT</div>
+          {/* Right Panel - Mobile: Last */}
+          <div className="lg:col-span-3 order-3">
+            <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-4">
+              <div className="heading-font text-white text-sm mb-4">
+                BATTLE RESULT
+              </div>
 
               {gameState === "idle" && (
-                <div className="text-[#9EB39F] text-xs">
+                <div className="text-[#9EB39F] text-sm text-center py-8">
                   No battle result yet
                 </div>
               )}
 
               {gameState === "battling" && (
-                <div className="space-y-2">
-                  <div className="text-[#9EB39F] text-xs mb-3">
+                <div className="space-y-4">
+                  <div className="text-[#9EB39F] text-sm mb-3">
                     Battle in progress...
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#A8F0A2] text-xs">
-                        {getCoinName(coinA)}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center p-2 bg-[#1F2E1F] rounded">
+                      <span className="text-[#A8F0A2] text-sm">
+                        {coinA?.symbol}
                       </span>
-                      <span className="text-white text-xs">{scoreA}</span>
+                      <span className="text-white text-lg font-bold">
+                        {scoreA}
+                      </span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#F5C542] text-xs">
-                        {getCoinName(coinB)}
+                    <div className="flex justify-between items-center p-2 bg-[#1F2E1F] rounded">
+                      <span className="text-[#F5C542] text-sm">
+                        {coinB?.symbol}
                       </span>
-                      <span className="text-white text-xs">{scoreB}</span>
+                      <span className="text-white text-lg font-bold">
+                        {scoreB}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-[#3BA76F]">
+                  <div className="pt-4 border-t border-[#3BA76F]">
                     <div className="text-[#9EB39F] text-xs mb-2">
                       Performance
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs">{getCoinName(coinA)}</span>
+                        <span className="text-white text-sm">
+                          {coinA?.symbol}
+                        </span>
                         <span
-                          className={`text-xs ${
+                          className={`text-sm font-bold ${
                             gameStateRef.current.totalChangeA >= 0
                               ? "text-[#A8F0A2]"
                               : "text-[#FF7676]"
@@ -932,9 +1128,11 @@ const CryptoPongBattle = () => {
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-xs">{getCoinName(coinB)}</span>
+                        <span className="text-white text-sm">
+                          {coinB?.symbol}
+                        </span>
                         <span
-                          className={`text-xs ${
+                          className={`text-sm font-bold ${
                             gameStateRef.current.totalChangeB >= 0
                               ? "text-[#A8F0A2]"
                               : "text-[#FF7676]"
@@ -951,73 +1149,59 @@ const CryptoPongBattle = () => {
               )}
 
               {gameState === "ended" && winner && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span
-                      className={`${
-                        winner === "A" ? "text-[#A8F0A2]" : "text-[#9EB39F]"
-                      }`}
-                    >
-                      {getCoinName(coinA)}
-                    </span>
-                    <span
-                      className={`${
-                        winner === "B" ? "text-[#F5C542]" : "text-[#9EB39F]"
-                      }`}
-                    >
-                      {getCoinName(coinB)}
-                    </span>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-[#1F2E1F] rounded">
+                    <div className="text-center flex-1">
+                      <div
+                        className={`text-xl font-bold mb-1 ${
+                          winner === "A" ? "text-[#A8F0A2]" : "text-white"
+                        }`}
+                      >
+                        {coinA?.symbol}
+                      </div>
+                      <div className="text-[#9EB39F] text-xs">
+                        {gameStateRef.current.totalChangeA?.toFixed(2)}%
+                      </div>
+                    </div>
+
+                    <div className="text-white text-2xl px-4">VS</div>
+
+                    <div className="text-center flex-1">
+                      <div
+                        className={`text-xl font-bold mb-1 ${
+                          winner === "B" ? "text-[#F5C542]" : "text-white"
+                        }`}
+                      >
+                        {coinB?.symbol}
+                      </div>
+                      <div className="text-[#9EB39F] text-xs">
+                        {gameStateRef.current.totalChangeB?.toFixed(2)}%
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="text-center text-2xl">
-                    {winner === "TIE" ? "=" : winner === "A" ? ">" : "<"}
-                  </div>
+                  {winner !== "TIE" && (
+                    <div className="text-center p-3 bg-[#3BA76F]/20 border border-[#3BA76F] rounded">
+                      <div className="text-[#A8F0A2] text-sm mb-1">Winner</div>
+                      <div className="heading-font text-[#F5C542] text-2xl">
+                        {winner === "A" ? coinA?.symbol : coinB?.symbol}
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="text-[#F5C542] text-xs text-center mt-4">
-                    {winner === "TIE"
-                      ? "Draw!"
-                      : `${getCoinName(winner === "A" ? coinA : coinB)} WINS!`}
-                  </div>
+                  {winner === "TIE" && (
+                    <div className="text-center p-3 bg-[#F5C542]/20 border border-[#F5C542] rounded">
+                      <div className="heading-font text-[#F5C542] text-2xl">
+                        IT'S A TIE!
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="mt-4 pt-3 border-t border-[#3BA76F]">
+                  <div className="pt-3 border-t border-[#3BA76F]">
                     <div className="text-[#9EB39F] text-xs mb-2">
-                      Final Performance
+                      Performance Margin
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs">{getCoinName(coinA)}</span>
-                        <span
-                          className={`text-xs ${
-                            gameStateRef.current.totalChangeA >= 0
-                              ? "text-[#A8F0A2]"
-                              : "text-[#FF7676]"
-                          }`}
-                        >
-                          {gameStateRef.current.totalChangeA?.toFixed(2) ||
-                            "0.00"}
-                          %
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs">{getCoinName(coinB)}</span>
-                        <span
-                          className={`text-xs ${
-                            gameStateRef.current.totalChangeB >= 0
-                              ? "text-[#A8F0A2]"
-                              : "text-[#FF7676]"
-                          }`}
-                        >
-                          {gameStateRef.current.totalChangeB?.toFixed(2) ||
-                            "0.00"}
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-center">
-                    <div className="text-[#9EB39F] text-xs">Margin</div>
-                    <div className="text-white text-sm font-bold">
+                    <div className="text-white text-xl font-bold text-center">
                       {Math.abs(
                         gameStateRef.current.totalChangeA -
                           gameStateRef.current.totalChangeB

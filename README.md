@@ -31,7 +31,7 @@ We utilize Clarity smart contracts for:
    - Metadata includes battle details, coins, performance delta
    - SIP-009 compliant
 
-3. **Betting Contract** (`battle-betting.clar`)
+3. **Prediction Contract** (`battle-betting.clar`)
    - Allow users to wager STX on battle outcomes
    - Automated payout based on results
    - Fee distribution to protocol treasury
@@ -89,8 +89,8 @@ cd contract
 # Install Clarinet
 curl -L https://github.com/hirosystems/clarinet/releases/download/v1.8.0/clarinet-linux-x64.tar.gz | tar xz
 
-# Test contracts
-clarinet test
+# Compile contracts
+clarinet check
 
 # Deploy to testnet
 clarinet deploy --testnet

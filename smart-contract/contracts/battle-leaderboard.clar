@@ -59,20 +59,18 @@
         )
 
         (if (>= performance-delta MIN-PERFORMANCE-DELTA)
-            (begin
-                (map-set player-stats
-                    player-address
-                    {
-                        wins: (if was-win (+ (get wins current-stats) u1) (get wins current-stats)),
-                        losses: (if (not was-win) (+ (get losses current-stats) u1) (get losses current-stats)),
-                        highest-delta: (if (and was-win (> performance-delta (get highest-delta current-stats)))
-                                        performance-delta
-                                        (get highest-delta current-stats)
-                                        )
-                    }
-                )
+            (map-set player-stats
+                player-address
+                {
+                    wins: (if was-win (+ (get wins current-stats) u1) (get wins current-stats)),
+                    losses: (if (not was-win) (+ (get losses current-stats) u1) (get losses current-stats)),
+                    highest-delta: (if (and was-win (> performance-delta (get highest-delta current-stats)))
+                                    performance-delta
+                                    (get highest-delta current-stats)
+                                    )
+                }
             )
-            (print { reason: "Delta too low to qualify for leaderboard." })
+            false
         )
 
         (map-set battle-history

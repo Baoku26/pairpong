@@ -1,28 +1,22 @@
 ;; Crypto Pong Battle - NFT Contract (SIP-009)
 ;; Defines and manages the Battle Victory NFT.
 
-(use-trait nft-trait 'SP2PABAF9E7KEKAJ2SSPCK7S4Q8CCQJADSE92G7M.sip-009-nft-trait.nft-trait)
+(impl-trait .sip-009-nft-trait.nft-trait)
 
-;; --- Constants ---
+;; Constants
 (define-constant CONTRACT-OWNER tx-sender)
 (define-constant ERR-NOT-AUTHORIZED (err u401))
-(define-constant CONTRACT-TREASURY 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM) 
-;; Placeholder address for NFT treasury
 
-;; --- NFT Definition ---
-
+;; NFT Definition
 (define-non-fungible-token battle-victory-nft uint)
 
-;; Tracks the next available NFT ID
 (define-data-var next-nft-id uint u1)
 
-;; Stores the metadata URI for each token ID
 (define-map token-uri uint (string-ascii 256))
 
-;; --- Trait Implementation (SIP-009) ---
-
+;; Trait Implementation (SIP-009)
 (define-read-only (get-last-token-id)
-    (ok (var-get next-nft-id))
+    (ok (- (var-get next-nft-id) u1))
 )
 
 (define-read-only (get-token-uri (token-id uint))
@@ -30,7 +24,7 @@
 )
 
 (define-read-only (get-owner (token-id uint))
-    (ok (nft-get-owner battle-victory-nft token-id))
+    (ok (nft-get-owner? battle-victory-nft token-id))
 )
 
 (define-public (transfer (token-id uint) (sender principal) (recipient principal))
@@ -40,20 +34,15 @@
     )
 )
 
-;; --- Minting Logic ---
-
-;; @desc Mints a new NFT to the recipient, restricted to the Leaderboard contract or deployer.
-;; @param recipient The principal to receive the NFT.
-;; @param metadata-uri The URI pointing to the token metadata.
+;; Minting Logic
 (define-public (mint-battle-nft
     (recipient principal)
     (metadata-uri (string-ascii 256))
 )
     (let
         (
-        (current-id (var-get next-nft-id))
-        ;; Only the deployer or the specific leaderboard contract can mint
-        (is-caller-valid (or (is-eq tx-sender CONTRACT-OWNER) (is-eq tx-sender 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.battle-leaderboard)))
+            (current-id (var-get next-nft-id))
+            (is-caller-valid (is-eq tx-sender CONTRACT-OWNER))
         )
         (asserts! is-caller-valid ERR-NOT-AUTHORIZED)
 

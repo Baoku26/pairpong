@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Swords, Trophy, TrendingUp, TrendingDown } from "lucide-react";
+import LeaderBoard from "./pages/leader-board";
 import "./App.css";
 
 const CANVAS_WIDTH = 600;
@@ -796,15 +797,18 @@ const CryptoPongBattle = () => {
       `}</style>
 
       <div className="max-w-7xl mx-auto">
-        <h1 className="heading-font text-2xl sm:text-3xl md:text-4xl text-white text-center mb-4 sm:mb-8 tracking-wider">
+        <h1 className="heading-font mt-10 text-2xl sm:text-3xl md:text-4xl text-black text-center mb-4 sm:mb-8 tracking-wider">
           CRYPTO PONG BATTLE
         </h1>
+        <button className="absolute top-4 right-4 bg-[#3BA76F] hover:brightness-110 text-white py-2 px-4 rounded transition-all text-xs font-bold border-2 border-[#3BA76F]">
+          <p>Connect Wallet</p>
+        </button>
 
-        {apiError && (
+        {/* {apiError && (
           <div className="mb-4 p-3 bg-[#FF7676]/20 border-2 border-[#FF7676] rounded text-[#FF7676] text-sm">
             {apiError}
           </div>
-        )}
+        )} */}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Panel - Mobile: Below canvas */}
@@ -1164,7 +1168,7 @@ const CryptoPongBattle = () => {
                       </div>
                     </div>
 
-                    <div className="text-white text-2xl px-4">VS</div>
+                    <div className="text-white text-xl px-4">VS</div>
 
                     <div className="text-center flex-1">
                       <div
@@ -1215,6 +1219,7 @@ const CryptoPongBattle = () => {
           </div>
         </div>
       </div>
+      <LeaderBoard />
     </div>
   );
 };

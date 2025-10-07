@@ -30,6 +30,7 @@ const TRAIL_LENGTH = 12; // Increased trail for faster movement
 
 const CryptoPongBattle = () => {
   const [userPrediction, setUserPrediction] = useState(null);
+  const [predictedWinner, setPredictedWinner] = useState(null)
   const [userStats, setUserStats] = useState(null);
   const [submittingToBlockchain, setSubmittingToBlockchain] = useState(false);
   const [blockchainTxId, setBlockchainTxId] = useState(null);
@@ -402,6 +403,11 @@ const CryptoPongBattle = () => {
       return;
     }
 
+    if (!predictedWinner) {
+      alert("Please select which coin you think will win!");
+      return;
+    }
+
     setLoadingHistorical(true);
     setApiError(null);
 
@@ -515,20 +521,25 @@ const CryptoPongBattle = () => {
           const battleData = {
             coinA: coinA?.symbol || "BTC",
             coinB: coinB?.symbol || "ETH",
-            winner: winnerCoin,
+            predictedWinner: predictedWinner === "A" ? (coinA?.symbol || "BTC") : (coinB?.symbol || "ETH"),
+            actualWinner: winnerCoin,
             performanceDelta: Math.abs(changeA - changeB),
             scoreA: finalA,
             scoreB: finalB,
           };
 
           console.log('Submitting battle to blockchain:', battleData);
-          await submitBattleResult(battleData);
+          const result = await submitBattleResult(battleData);
           
-          // Show success notification
-          alert('Battle recorded on blockchain! ✅');
+          // Check if prediction was correct
+          const wasCorrect = battleData.predictedWinner === battleData.actualWinner;
+          const message = wasCorrect 
+            ? '✅ Correct prediction! Battle recorded on blockchain!' 
+            : '❌ Wrong prediction. Battle recorded on blockchain.';
+          
+          alert(message);
         } catch (error) {
           console.error('Failed to submit battle:', error);
-          // Only show alert if user didn't cancel
           if (error.message !== 'User canceled transaction') {
             alert('Failed to record battle on blockchain. Please try again.');
           }

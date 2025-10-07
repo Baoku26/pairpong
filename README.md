@@ -89,11 +89,27 @@ cd smart-contract
 # Install Clarinet
 curl -L https://github.com/hirosystems/clarinet/releases/download/v1.8.0/clarinet-linux-x64.tar.gz | tar xz
 
+#add your settings folder in the smart-contract folder
+create 3 files: Testnet.toml, Devnet.toml, and Mainnet.toml
+
+```
+[network]
+name = "mainnet/testnet/devnet"#fix based on the network you are working with
+node_rpc_address = "https://api.hiro.so"
+
+[accounts.deployer]
+mnemonic = "enter your 24 word seed phrase"
+```
+put all these in the 3 files and the name will differ based on the files
+
 # Compile contracts
 clarinet check
 
+#generate deloyments for testnet
+clarinet deployments generate --testnet --low-cost
+
 # Deploy to testnet
-clarinet deploy --testnet
+clarinet deployments apply --testnet
 
 # Deploy to mainnet
 clarinet deploy --mainnet

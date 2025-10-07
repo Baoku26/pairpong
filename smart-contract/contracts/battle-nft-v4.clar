@@ -1,7 +1,7 @@
 ;; Crypto Pong Battle - NFT Contract (SIP-009)
 ;; Defines and manages the Battle Victory NFT.
 
-(impl-trait .sip-009-nft-trait.nft-trait)
+(impl-trait .sip-009-nft-trait-v4.nft-trait)
 
 ;; Constants
 (define-constant CONTRACT-OWNER tx-sender)

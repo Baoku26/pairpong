@@ -42,11 +42,11 @@ const WalletConnect = () => {
     };
 
     return (
-        <div className="absolute top-4 right-4 bg-[#3BA76F] hover:brightness-110 text-white py-2 px-4 rounded transition-all text-xs font-bold border-2 border-[#3BA76F]">
+        <div className="absolute top-2 right-2 hover:brightness-110 text-white py-2 px-4 rounded transition-all text-xs font-bold border-2">
         {!isConnected ? (
             <button
             onClick={handleConnect}
-            className="bg-[#F5C542] hover:brightness-110 text-[#1F2E1F] px-4 py-2 rounded font-bold text-xs transition-all"
+            className="bg-[#3BA76F] border-[#3BA76F] hover:brightness-110 text-[#1F2E1F] px-4 py-2 rounded font-bold text-xs transition-all"
             >
             CONNECT WALLET
             </button>

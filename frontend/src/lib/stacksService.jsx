@@ -7,7 +7,7 @@ import {
     fetchCallReadOnlyFunction,
     cvToJSON,
 } from '@stacks/transactions';
-import { NETWORK, CONTRACT_DEPLOYER_ADDRESS, CONTRACTS, appDetails } from './stacksConfig';
+import { NETWORK, CONTRACT_DEPLOYER_ADDRESS, CONTRACTS, APP_DETAILS } from './stacksConfig';
 
 // 🧩 Initialize session
 const appConfig = new AppConfig(['store_write', 'publish_data']);
@@ -15,7 +15,7 @@ export const userSession = new UserSession({ appConfig });
 
 export const connectWallet = (onFinish, onCancel) => {
     showConnect({
-        appDetails,
+        APP_DETAILS,
         redirectTo: '/',
         userSession,
         onFinish: (data) => {

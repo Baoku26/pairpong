@@ -14,7 +14,6 @@ import {
 import LeaderBoard from "./components/leader-board";
 import submitBattleResult from "./stacks/contract-constants";
 import WalletConnect from './components/WalletConnect';
-import { submitBattleToBlockchain, getUserStats, getBattleCount } from './lib/stacksService';
 import "./App.css";
 
 const CANVAS_WIDTH = 600;
@@ -933,14 +932,15 @@ const CryptoPongBattle = () => {
               </div>
 
               {/*Prediction Div*/}
-              <div>
-                <p>ENTER YOUR PREDICTION</p>
+              <div className="flex flex-col gap-1 my-2">
+                <p className="text-xs">ENTER YOUR PREDICTION</p>
                 <input 
+                  className="p-2 border-2 border-[#3BA76F] text-black mt-1 text-xs"
                   disabled={
                     isRunning || isLoadingCoins || gameState === "ended"
                   }
                   type="text" 
-                  value={userPrediction} 
+                  value={userPrediction || ""} 
                   onChange={(e) => setUserPrediction(e.target.value)}
                 />
               </div>

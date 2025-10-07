@@ -2,7 +2,7 @@ import {
     UserSession,
     showConnect,
 } from '@stacks/connect';
-import { STACKS_NETWORK } from './contract-constants';
+import { STACKS_NETWORK } from './stacks-connect';
 import {Trophy} from 'lucide-react';
 
 const appDetails = {

@@ -15,7 +15,7 @@ export const CONTRACT_ADDRESSES = {
     // Betting 
     BETTING: {
         address: DEPLOYER_ADDRESS,
-        name: 'battle-betting',
+        name: 'battle-prediction',
     },
 };
 

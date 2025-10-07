@@ -1,6 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Swords, Trophy, TrendingUp, TrendingDown } from "lucide-react";
-import LeaderBoard from "./pages/leader-board";
+import { 
+  useState, 
+  useEffect, 
+  useRef, 
+  useCallback 
+} from "react";
+import { 
+  Swords, 
+  Trophy, 
+  TrendingUp, 
+  TrendingDown,
+  Wallet2
+} from "lucide-react";
+import LeaderBoard from "./components/leader-board";
+import submitBattleResult from "./stacks/contract-constants";
+import WalletConnect from './components/WalletConnect';
+import { submitBattleToBlockchain, getUserStats, getBattleCount } from './lib/stacksService';
 import "./App.css";
 
 const CANVAS_WIDTH = 600;
@@ -15,6 +29,10 @@ const API_CALL_INTERVAL = 1000;
 const TRAIL_LENGTH = 12; // Increased trail for faster movement
 
 const CryptoPongBattle = () => {
+  const [userPrediction, setUserPrediction] = useState(null);
+  const [userStats, setUserStats] = useState(null);
+  const [submittingToBlockchain, setSubmittingToBlockchain] = useState(false);
+  const [blockchainTxId, setBlockchainTxId] = useState(null);
   const [coins, setCoins] = useState([]);
   const [isLoadingCoins, setIsLoadingCoins] = useState(true);
   const [coinA, setCoinA] = useState(null);
@@ -445,7 +463,7 @@ const CryptoPongBattle = () => {
     }
   };
 
-  const endGame = () => {
+  const endGame = async () => {
     setIsRunning(false);
 
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
@@ -456,20 +474,28 @@ const CryptoPongBattle = () => {
 
     // Determine winner and award final point
     let winnerSide = null;
+    let winnerCoin = '';
+    
     if (Math.abs(changeA - changeB) < 0.5) {
       winnerSide = "TIE";
+      winnerCoin = "TIE";
     } else if (changeA > changeB) {
       winnerSide = "A";
-      setScoreA((prev) => prev + 1); // Award winning point
+      winnerCoin = coinA?.symbol || "BTC";
+      setScoreA((prev) => prev + 1);
     } else {
       winnerSide = "B";
-      setScoreB((prev) => prev + 1); // Award winning point
+      winnerCoin = coinB?.symbol || "ETH";
+      setScoreB((prev) => prev + 1);
     }
 
     // Capture final scores after awarding point
-    setTimeout(() => {
-      setFinalScoreA(winnerSide === "A" ? scoreA + 1 : scoreA);
-      setFinalScoreB(winnerSide === "B" ? scoreB + 1 : scoreB);
+    setTimeout(async () => {
+      const finalA = winnerSide === "A" ? scoreA + 1 : scoreA;
+      const finalB = winnerSide === "B" ? scoreB + 1 : scoreB;
+      
+      setFinalScoreA(finalA);
+      setFinalScoreB(finalB);
       setWinner(winnerSide);
       setGameState("ended");
 
@@ -482,6 +508,32 @@ const CryptoPongBattle = () => {
         paddleAHeight: state.paddleAHeight,
         paddleBHeight: state.paddleBHeight,
       });
+
+      // Submit to blockchain if wallet is connected
+      if (isWalletConnected && winnerSide !== "TIE") {
+        try {
+          const battleData = {
+            coinA: coinA?.symbol || "BTC",
+            coinB: coinB?.symbol || "ETH",
+            winner: winnerCoin,
+            performanceDelta: Math.abs(changeA - changeB),
+            scoreA: finalA,
+            scoreB: finalB,
+          };
+
+          console.log('Submitting battle to blockchain:', battleData);
+          await submitBattleResult(battleData);
+          
+          // Show success notification
+          alert('Battle recorded on blockchain! ✅');
+        } catch (error) {
+          console.error('Failed to submit battle:', error);
+          // Only show alert if user didn't cancel
+          if (error.message !== 'User canceled transaction') {
+            alert('Failed to record battle on blockchain. Please try again.');
+          }
+        }
+      }
     }, 50);
   };
 
@@ -800,9 +852,7 @@ const CryptoPongBattle = () => {
         <h1 className="heading-font mt-10 text-2xl sm:text-3xl md:text-4xl text-black text-center mb-4 sm:mb-8 tracking-wider">
           CRYPTO PONG BATTLE
         </h1>
-        <button className="absolute top-4 right-4 bg-[#3BA76F] hover:brightness-110 text-white py-2 px-4 rounded transition-all text-xs font-bold border-2 border-[#3BA76F]">
-          <p>Connect Wallet</p>
-        </button>
+        <WalletConnect />
 
         {/* {apiError && (
           <div className="mb-4 p-3 bg-[#FF7676]/20 border-2 border-[#FF7676] rounded text-[#FF7676] text-sm">
@@ -869,6 +919,19 @@ const CryptoPongBattle = () => {
                     )}
                   </select>
                 </div>
+              </div>
+
+              {/*Prediction Div*/}
+              <div>
+                <p>ENTER YOUR PREDICTION</p>
+                <input 
+                  disabled={
+                    isRunning || isLoadingCoins || gameState === "ended"
+                  }
+                  type="text" 
+                  value={userPrediction} 
+                  onChange={(e) => setUserPrediction(e.target.value)}
+                />
               </div>
 
               {/* Button */}

@@ -23,7 +23,7 @@ path = "contracts/battle-nft.clar"
 clarity_version = 2
 epoch = 2.5
 
-[contracts.battle-betting]
-path = "contracts/battle-betting.clar"
+[contracts.battle-prediction]
+path = "contracts/battle-prediction.clar"
 clarity_version = 2
 epoch = 2.5

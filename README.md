@@ -1,10 +1,10 @@
-# Crypto Pong Battle
+# PairPong Battle
 
 A decentralized gaming platform that combines classic Pong gameplay with real-time cryptocurrency price data and blockchain-based leaderboards on the Stacks network.
 
 ## Overview
 
-Crypto Pong Battle is an innovative Web3 game where two cryptocurrencies compete in a Pong match. The game mechanics are directly influenced by real market data, paddle sizes adjust based on price performance, speeds change with volatility, and the winner is determined by actual price movements over a 20-second battle period.
+PairPong Battle is an innovative Web3 game where two cryptocurrencies compete in a Pong match. The game mechanics are directly influenced by real market data, paddle sizes adjust based on price performance, speeds change with volatility, and the winner is determined by actual price movements over a 20-second battle period.
 
 ## Features
 

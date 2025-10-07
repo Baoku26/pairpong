@@ -85,7 +85,7 @@ npm run dev
 ### Deploy Contracts
 
 ```bash
-cd contract
+cd smart-contract
 # Install Clarinet
 curl -L https://github.com/hirosystems/clarinet/releases/download/v1.8.0/clarinet-linux-x64.tar.gz | tar xz
 

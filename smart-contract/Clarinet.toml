@@ -1,22 +1,29 @@
 [project]
 name = "pairpong"
 version = "0.0.1"
-epoch = "2.3"
-clarity-version = "2"
-requirements = []
+authors = []
+description = "Crypto Pong Battle - A blockchain-based gaming platform"
+telemetry = false
 
-[contracts]
-battle-leaderboard = "src/contracts/battle-leaderboard.clar"
-sip-009-nft-trait = "src/sips/sip-009-nft-trait.clar"
-battle-nft = "src/contracts/battle-nft.clar"
-battle-betting = "src/contracts/battle-betting.clar"
+[project.requirements]
+# No external requirements
 
-[repl]
-costs = true
-parser = 0
+[contracts.battle-leaderboard]
+path = "contracts/battle-leaderboard.clar"
+clarity_version = 2
+epoch = 2.5
 
-[network.testnet]
-cost-limit = 100000000
+[contracts.sip-009-nft-trait]
+path = "sips/sip-009-nft-trait.clar"
+clarity_version = 2
+epoch = 2.5
 
-[network.mainnet]
-cost-limit = 100000000
+[contracts.battle-nft]
+path = "contracts/battle-nft.clar"
+clarity_version = 2
+epoch = 2.5
+
+[contracts.battle-betting]
+path = "contracts/battle-betting.clar"
+clarity_version = 2
+epoch = 2.5

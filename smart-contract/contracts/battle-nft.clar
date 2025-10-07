@@ -6,7 +6,8 @@
 ;; --- Constants ---
 (define-constant CONTRACT-OWNER tx-sender)
 (define-constant ERR-NOT-AUTHORIZED (err u401))
-(define-constant CONTRACT-TREASURY 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM) ; Placeholder address for NFT treasury
+(define-constant CONTRACT-TREASURY 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM) 
+;; Placeholder address for NFT treasury
 
 ;; --- NFT Definition ---
 

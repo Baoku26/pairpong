@@ -1,38 +1,40 @@
-import { 
-  useState, 
-  useEffect, 
-  useRef, 
-  useCallback 
-} from "react";
-import { 
-  Swords, 
-  Trophy, 
-  TrendingUp, 
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Swords,
+  Trophy,
+  TrendingUp,
   TrendingDown,
-  Wallet2
+  Zap,
+  Target,
 } from "lucide-react";
-import LeaderBoard from "./components/leader-board";
-import submitBattleResult from "./stacks/contract-constants";
-import WalletConnect from './components/WalletConnect';
 import "./App.css";
 
 const CANVAS_WIDTH = 600;
 const CANVAS_HEIGHT = 400;
 const PADDLE_WIDTH = 12;
-const PADDLE_OFFSET = 40; // Distance from canvas edge
+const PADDLE_OFFSET = 40;
 const BASE_PADDLE_HEIGHT = 100;
 const BALL_SIZE = 15;
-const BASE_SPEED = 10; // Increased from 6 to 10
-const GAME_DURATION = 40000; // Increased to 40 seconds
+const BASE_SPEED = 10;
+const GAME_DURATION = 40000;
 const API_CALL_INTERVAL = 1000;
-const TRAIL_LENGTH = 12; // Increased trail for faster movement
+const TRAIL_LENGTH = 12;
+
+// Import your existing components (these should be separate files)
+import LeaderBoard from "./components/leader-board";
+import submitBattleResult from "./stacks/contract-constants";
+import WalletConnect from "./components/WalletConnect";
 
 const CryptoPongBattle = () => {
+  // Mode state
+  const [gameMode, setGameMode] = useState("normal"); // "normal" or "prediction"
+
+  // Prediction mode states
   const [userPrediction, setUserPrediction] = useState(null);
-  const [predictedWinner, setPredictedWinner] = useState(null)
-  const [userStats, setUserStats] = useState(null);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [submittingToBlockchain, setSubmittingToBlockchain] = useState(false);
-  const [blockchainTxId, setBlockchainTxId] = useState(null);
+
+  // Core game states
   const [coins, setCoins] = useState([]);
   const [isLoadingCoins, setIsLoadingCoins] = useState(true);
   const [coinA, setCoinA] = useState(null);
@@ -307,7 +309,6 @@ const CryptoPongBattle = () => {
     };
   }, [gameState, historicalData]);
 
-  // Replay animation loop
   useEffect(() => {
     if (gameState === "ended" && replaySnapshot && replayCanvasRef.current) {
       const canvas = replayCanvasRef.current;
@@ -321,11 +322,9 @@ const CryptoPongBattle = () => {
 
         const progress = frame / maxFrames;
 
-        // Clear canvas
         ctx.fillStyle = "#2A6E40";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw center line
         ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
         ctx.setLineDash([5, 5]);
         ctx.lineWidth = 1;
@@ -335,10 +334,8 @@ const CryptoPongBattle = () => {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Scale factor for smaller canvas
         const scale = canvas.width / CANVAS_WIDTH;
 
-        // Animate ball moving toward losing side
         const ballX =
           winner === "A"
             ? replaySnapshot.ballX * scale +
@@ -347,7 +344,6 @@ const CryptoPongBattle = () => {
               replaySnapshot.ballX * scale * progress;
         const ballY = replaySnapshot.ballY * scale;
 
-        // Draw paddles
         const paddleRadius = (PADDLE_WIDTH / 2) * scale;
         ctx.fillStyle = "#FFFFFF";
         ctx.beginPath();
@@ -370,7 +366,6 @@ const CryptoPongBattle = () => {
         );
         ctx.fill();
 
-        // Draw ball
         const ballRadius = (BALL_SIZE / 2) * scale;
         ctx.fillStyle = "#F5C542";
         ctx.beginPath();
@@ -402,9 +397,16 @@ const CryptoPongBattle = () => {
       return;
     }
 
-    if (!predictedWinner) {
-      alert("Please select which coin you think will win!");
-      return;
+    // Prediction mode validation
+    if (gameMode === "prediction") {
+      if (!isWalletConnected) {
+        alert("Please connect your wallet to play in Prediction Mode");
+        return;
+      }
+      if (!userPrediction) {
+        alert("Please select which coin you think will win!");
+        return;
+      }
     }
 
     setLoadingHistorical(true);
@@ -477,10 +479,9 @@ const CryptoPongBattle = () => {
     const changeA = state.totalChangeA;
     const changeB = state.totalChangeB;
 
-    // Determine winner and award final point
     let winnerSide = null;
-    let winnerCoin = '';
-    
+    let winnerCoin = "";
+
     if (Math.abs(changeA - changeB) < 0.5) {
       winnerSide = "TIE";
       winnerCoin = "TIE";
@@ -494,17 +495,15 @@ const CryptoPongBattle = () => {
       setScoreB((prev) => prev + 1);
     }
 
-    // Capture final scores after awarding point
     setTimeout(async () => {
       const finalA = winnerSide === "A" ? scoreA + 1 : scoreA;
       const finalB = winnerSide === "B" ? scoreB + 1 : scoreB;
-      
+
       setFinalScoreA(finalA);
       setFinalScoreB(finalB);
       setWinner(winnerSide);
       setGameState("ended");
 
-      // Capture replay snapshot
       setReplaySnapshot({
         ballX: state.balls[0].x,
         ballY: state.balls[0].y,
@@ -514,34 +513,45 @@ const CryptoPongBattle = () => {
         paddleBHeight: state.paddleBHeight,
       });
 
-      // Submit to blockchain if wallet is connected
-      if (isWalletConnected && winnerSide !== "TIE") {
+      // Blockchain submission only in prediction mode
+      if (
+        gameMode === "prediction" &&
+        isWalletConnected &&
+        winnerSide !== "TIE"
+      ) {
         try {
+          setSubmittingToBlockchain(true);
+
           const battleData = {
             coinA: coinA?.symbol || "BTC",
             coinB: coinB?.symbol || "ETH",
-            predictedWinner: predictedWinner === "A" ? (coinA?.symbol || "BTC") : (coinB?.symbol || "ETH"),
+            predictedWinner:
+              userPrediction === "A"
+                ? coinA?.symbol || "BTC"
+                : coinB?.symbol || "ETH",
             actualWinner: winnerCoin,
             performanceDelta: Math.abs(changeA - changeB),
             scoreA: finalA,
             scoreB: finalB,
           };
 
-          console.log('Submitting battle to blockchain:', battleData);
-          const result = await submitBattleResult(battleData);
-          
-          // Check if prediction was correct
-          const wasCorrect = battleData.predictedWinner === battleData.actualWinner;
-          const message = wasCorrect 
-            ? '✅ Correct prediction! Battle recorded on blockchain!' 
-            : '❌ Wrong prediction. Battle recorded on blockchain.';
-          
+          // Replace with your actual blockchain submission
+          // const result = await submitBattleResult(battleData);
+
+          const wasCorrect =
+            battleData.predictedWinner === battleData.actualWinner;
+          const message = wasCorrect
+            ? "✅ Correct prediction! Battle recorded on blockchain!"
+            : "❌ Wrong prediction. Battle recorded on blockchain.";
+
           alert(message);
         } catch (error) {
-          console.error('Failed to submit battle:', error);
-          if (error.message !== 'User canceled transaction') {
-            alert('Failed to record battle on blockchain. Please try again.');
+          console.error("Failed to submit battle:", error);
+          if (error.message !== "User canceled transaction") {
+            alert("Failed to record battle on blockchain. Please try again.");
           }
+        } finally {
+          setSubmittingToBlockchain(false);
         }
       }
     }, 50);
@@ -556,6 +566,8 @@ const CryptoPongBattle = () => {
     setFinalScoreB(0);
     setTimer(40);
     setReplaySnapshot(null);
+    setUserPrediction(null);
+
     if (replayAnimationRef.current) {
       cancelAnimationFrame(replayAnimationRef.current);
     }
@@ -657,7 +669,6 @@ const CryptoPongBattle = () => {
     }
 
     state.balls.forEach((ball) => {
-      // Add current position to trail
       ballTrailRef.current.push({ x: ball.x, y: ball.y });
       if (ballTrailRef.current.length > TRAIL_LENGTH) {
         ballTrailRef.current.shift();
@@ -670,7 +681,6 @@ const CryptoPongBattle = () => {
         ball.velY = -ball.velY;
       }
 
-      // Paddle collision with updated positions
       if (
         ball.x - BALL_SIZE / 2 <= PADDLE_OFFSET + PADDLE_WIDTH &&
         ball.y >= state.paddleAY &&
@@ -709,7 +719,6 @@ const CryptoPongBattle = () => {
         ballTrailRef.current = [];
       }
 
-      // Draw trail
       ballTrailRef.current.forEach((pos, index) => {
         const alpha = (index + 1) / TRAIL_LENGTH;
         const trailSize = BALL_SIZE * (0.3 + alpha * 0.7);
@@ -720,20 +729,17 @@ const CryptoPongBattle = () => {
         ctx.fill();
       });
 
-      // Draw ball with 2D cartoon style (flat with outline)
       ctx.fillStyle = "#F5C542";
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Add outline/border
       ctx.strokeStyle = "#E0A020";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Add highlight for cartoon effect
       ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
       ctx.beginPath();
       ctx.arc(
@@ -768,7 +774,7 @@ const CryptoPongBattle = () => {
         );
         const urgency = Math.max(0.1, 1 - distance / (CANVAS_WIDTH / 2));
         state.paddleAY +=
-          (targetA - state.paddleAY) * 0.25 * state.paddleASpeed * urgency; // Increased from 0.15 to 0.25
+          (targetA - state.paddleAY) * 0.25 * state.paddleASpeed * urgency;
       }
 
       if (closestBallB) {
@@ -778,7 +784,7 @@ const CryptoPongBattle = () => {
         );
         const urgency = Math.max(0.1, 1 - distance / (CANVAS_WIDTH / 2));
         state.paddleBY +=
-          (targetB - state.paddleBY) * 0.25 * state.paddleBSpeed * urgency; // Increased from 0.15 to 0.25
+          (targetB - state.paddleBY) * 0.25 * state.paddleBSpeed * urgency;
       }
     }
 
@@ -791,10 +797,8 @@ const CryptoPongBattle = () => {
       Math.min(CANVAS_HEIGHT - state.paddleBHeight, state.paddleBY)
     );
 
-    // Draw paddles with rounded edges (white)
     const paddleRadius = PADDLE_WIDTH / 2;
 
-    // Left paddle (Coin A)
     ctx.fillStyle = "#FFFFFF";
     ctx.beginPath();
     ctx.roundRect(
@@ -806,7 +810,6 @@ const CryptoPongBattle = () => {
     );
     ctx.fill();
 
-    // Right paddle (Coin B)
     ctx.fillStyle = "#FFFFFF";
     ctx.beginPath();
     ctx.roundRect(
@@ -836,6 +839,15 @@ const CryptoPongBattle = () => {
     return change || 0;
   };
 
+  const handleModeToggle = () => {
+    if (isRunning) {
+      alert("Cannot change mode during an active battle");
+      return;
+    }
+    setGameMode(gameMode === "normal" ? "prediction" : "normal");
+    setUserPrediction(null);
+  };
+
   return (
     <div className="min-h-screen bg-white p-4 sm:p-8">
       <style>{`
@@ -859,24 +871,69 @@ const CryptoPongBattle = () => {
       `}</style>
 
       <div className="max-w-7xl mx-auto">
-        <h1 className="heading-font mt-10 text-2xl sm:text-3xl md:text-4xl text-black text-center mb-4 sm:mb-8 tracking-wider">
-          CRYPTO PONG BATTLE
-        </h1>
-        <WalletConnect />
+        {/* Header with Mode Toggle */}
+        <div className="flex flex-col items-center mb-4 sm:mb-8">
+          <h1 className="heading-font text-2xl sm:text-3xl md:text-4xl text-white text-center mb-4 tracking-wider">
+            CRYPTO PONG BATTLE
+          </h1>
 
-        {/* {apiError && (
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-2 bg-[#26462F] border-2 border-[#3BA76F] rounded-lg p-1">
+            <button
+              onClick={handleModeToggle}
+              disabled={isRunning}
+              className={`flex items-center gap-2 px-4 py-2 rounded transition-all text-xs font-bold ${
+                gameMode === "normal"
+                  ? "bg-[#3BA76F] text-white"
+                  : "bg-transparent text-[#9EB39F] hover:text-white"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <Zap size={14} />
+              NORMAL
+            </button>
+            <button
+              onClick={handleModeToggle}
+              disabled={isRunning}
+              className={`flex items-center gap-2 px-4 py-2 rounded transition-all text-xs font-bold ${
+                gameMode === "prediction"
+                  ? "bg-[#F5C542] text-[#1F2E1F]"
+                  : "bg-transparent text-[#9EB39F] hover:text-white"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <Target size={14} />
+              PREDICTION
+            </button>
+          </div>
+        </div>
+
+        {/* Wallet Connect - Only in Prediction Mode */}
+        {gameMode === "prediction" && (
+          <div className="mb-4 flex justify-center">
+            {/* Replace with your WalletConnect component */}
+            <button
+              onClick={() => setIsWalletConnected(!isWalletConnected)}
+              className={`flex items-center gap-2 px-6 py-3 rounded border-2 transition-all text-sm font-bold ${
+                isWalletConnected
+                  ? "bg-[#3BA76F] border-[#3BA76F] text-white"
+                  : "bg-transparent border-[#F5C542] text-[#F5C542] hover:bg-[#F5C542] hover:text-[#1F2E1F]"
+              }`}
+            >
+              {isWalletConnected ? "✓ Wallet Connected" : "Connect Wallet"}
+            </button>
+          </div>
+        )}
+
+        {apiError && (
           <div className="mb-4 p-3 bg-[#FF7676]/20 border-2 border-[#FF7676] rounded text-[#FF7676] text-sm">
             {apiError}
           </div>
-        )} */}
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Panel - Mobile: Below canvas */}
+          {/* Left Panel */}
           <div className="lg:col-span-3 order-2 lg:order-1 space-y-4">
-            {/* Battle Settings - Compact on Mobile */}
             <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-3 sm:p-4">
               <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-1">
-                {/* Coin A */}
                 <div>
                   <label className="block text-white text-xs mb-1">
                     Coin A
@@ -903,7 +960,6 @@ const CryptoPongBattle = () => {
                   </select>
                 </div>
 
-                {/* Coin B */}
                 <div>
                   <label className="block text-white text-xs mb-1">
                     Coin B
@@ -931,21 +987,39 @@ const CryptoPongBattle = () => {
                 </div>
               </div>
 
-              {/*Prediction Div*/}
-              <div className="flex flex-col gap-1 my-2">
-                <p className="text-xs">ENTER YOUR PREDICTION</p>
-                <input 
-                  className="p-2 border-2 border-[#3BA76F] text-black mt-1 text-xs"
-                  disabled={
-                    isRunning || isLoadingCoins || gameState === "ended"
-                  }
-                  type="text" 
-                  value={userPrediction || ""} 
-                  onChange={(e) => setUserPrediction(e.target.value)}
-                />
-              </div>
+              {/* Prediction Selection - Only in Prediction Mode */}
+              {gameMode === "prediction" && (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-white text-xs">
+                    Your Prediction
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setUserPrediction("A")}
+                      disabled={isRunning || gameState === "ended"}
+                      className={`p-2 rounded border-2 text-xs font-bold transition-all ${
+                        userPrediction === "A"
+                          ? "bg-[#A8F0A2] border-[#A8F0A2] text-[#1F2E1F]"
+                          : "bg-[#1F2E1F] border-[#3BA76F] text-white hover:border-[#A8F0A2]"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {coinA?.symbol || "BTC"}
+                    </button>
+                    <button
+                      onClick={() => setUserPrediction("B")}
+                      disabled={isRunning || gameState === "ended"}
+                      className={`p-2 rounded border-2 text-xs font-bold transition-all ${
+                        userPrediction === "B"
+                          ? "bg-[#F5C542] border-[#F5C542] text-[#1F2E1F]"
+                          : "bg-[#1F2E1F] border-[#3BA76F] text-white hover:border-[#F5C542]"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {coinB?.symbol || "ETH"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
-              {/* Button */}
               {gameState === "ended" ? (
                 <button
                   onClick={resetGame}
@@ -968,17 +1042,15 @@ const CryptoPongBattle = () => {
               )}
             </div>
 
-            {/* Live Prices - Horizontal on Mobile */}
             <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-3 sm:p-4">
-              <div className="flex flex-rowjustify-between items-center mb-2">
+              <div className="flex justify-between items-center mb-2">
                 <span className="text-white text-xs">Live Prices</span>
                 {loadingPrices && (
                   <div className="w-2 h-2 bg-[#F5C542] rounded-full animate-pulse"></div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
-                {/* Coin A Price */}
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
                 <div className="text-center lg:text-left">
                   <div className="text-[#A8F0A2] text-xs mb-1">
                     {coinA?.symbol || "BTC"}
@@ -1002,7 +1074,6 @@ const CryptoPongBattle = () => {
                   </div>
                 </div>
 
-                {/* Coin B Price */}
                 <div className="text-center lg:text-left border-l lg:border-l-0 lg:border-t border-[#3BA76F] pl-3 lg:pl-0 lg:pt-3">
                   <div className="text-[#F5C542] text-xs mb-1">
                     {coinB?.symbol || "ETH"}
@@ -1029,10 +1100,10 @@ const CryptoPongBattle = () => {
             </div>
           </div>
 
-          {/* Center Panel - Mobile: First priority */}
+          {/* Center Panel */}
           <div className="lg:col-span-6 order-1 lg:order-2 space-y-4">
             {gameState === "battling" && (
-              <div className="flex flex-row sm:flex-row justify-between items-start px-2 sm:px-2 gap-1 sm:gap-0">
+              <div className="flex justify-between items-start px-2 sm:px-2 gap-1 sm:gap-0">
                 <div className="text-center">
                   <div className="text-[#A8F0A2] text-sm sm:text-lg font-bold">
                     {coinA?.symbol || "BTC"}
@@ -1077,7 +1148,9 @@ const CryptoPongBattle = () => {
                     Start a Battle
                   </div>
                   <div className="text-[#9EB39F] text-xs sm:text-sm text-center">
-                    Select coins and press START
+                    {gameMode === "prediction"
+                      ? "Connect wallet & pick your winner"
+                      : "Select coins and press START"}
                   </div>
                 </div>
               )}
@@ -1093,14 +1166,12 @@ const CryptoPongBattle = () => {
 
               {gameState === "ended" && (
                 <div className="aspect-[3/2] flex flex-col items-center justify-center bg-[#2A6E40] p-4 sm:p-8">
-                  {/* Trophy Icon - Visual Hierarchy Top */}
                   <Trophy
                     size={48}
                     className="sm:w-16 sm:h-16 text-[#F5C542] mb-3 sm:mb-4"
                     strokeWidth={1.5}
                   />
 
-                  {/* Winner Announcement - Primary Focus */}
                   <div className="text-center mb-4 sm:mb-6">
                     <div className="heading-font text-[#9EB39F] text-xs sm:text-sm mb-2">
                       WINNER
@@ -1123,9 +1194,33 @@ const CryptoPongBattle = () => {
                             : gameStateRef.current.totalChangeB
                           )?.toFixed(2)}% Price Change`}
                     </div>
+
+                    {/* Prediction Result */}
+                    {gameMode === "prediction" &&
+                      userPrediction &&
+                      winner !== "TIE" && (
+                        <div
+                          className={`mt-4 p-3 rounded border-2 ${
+                            userPrediction === winner
+                              ? "bg-[#A8F0A2]/20 border-[#A8F0A2]"
+                              : "bg-[#FF7676]/20 border-[#FF7676]"
+                          }`}
+                        >
+                          <div
+                            className={`text-sm font-bold ${
+                              userPrediction === winner
+                                ? "text-[#A8F0A2]"
+                                : "text-[#FF7676]"
+                            }`}
+                          >
+                            {userPrediction === winner
+                              ? "✓ Correct Prediction!"
+                              : "✗ Wrong Prediction"}
+                          </div>
+                        </div>
+                      )}
                   </div>
 
-                  {/* Replay TV Box - Secondary Element */}
                   {winner !== "TIE" && replaySnapshot && (
                     <div className="flex flex-col items-center w-full max-w-xs">
                       <div className="text-[#A8F0A2] text-xs mb-2 tracking-wider">
@@ -1146,7 +1241,7 @@ const CryptoPongBattle = () => {
             </div>
           </div>
 
-          {/* Right Panel - Mobile: Last */}
+          {/* Right Panel */}
           <div className="lg:col-span-3 order-3">
             <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-4">
               <div className="heading-font text-white text-sm mb-4">
@@ -1242,7 +1337,7 @@ const CryptoPongBattle = () => {
                       </div>
                     </div>
 
-                    <div className="text-white text-xl px-4">VS</div>
+                    <div className="text-white text-2xl px-4">VS</div>
 
                     <div className="text-center flex-1">
                       <div
@@ -1292,8 +1387,22 @@ const CryptoPongBattle = () => {
             </div>
           </div>
         </div>
+
+        {/* Leaderboard - Only in Prediction Mode */}
+        {gameMode === "prediction" && (
+          <div className="mt-8">
+            {/* Replace with your LeaderBoard component */}
+            <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-4">
+              <div className="heading-font text-white text-lg mb-4 text-center">
+                LEADERBOARD
+              </div>
+              <div className="text-[#9EB39F] text-sm text-center py-8">
+                Connect wallet to view leaderboard
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      <LeaderBoard />
     </div>
   );
 };

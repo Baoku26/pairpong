@@ -1,33 +1,42 @@
 import { useState, useEffect } from 'react';
 import Tooltip from '@mui/material/Tooltip';
-import { connectWallet, disconnectWallet, getUserData, userSession } from '../lib/stacksService';
+import { connectWallet, disconnectWallet, getUserData, userSession, subscribeAuth } from '../lib/stacksService';
 
 const WalletConnect = () => {
     const [isConnected, setIsConnected] = useState(false);
-    const [address, setAddress] = useState('');
+    const [address, setAddress] = useState(''); 
 
     useEffect(() => {
         checkConnection();
+
+        // subscribe to auth changes
+        const unsubscribe = subscribeAuth((connected) => {
+            setIsConnected(connected);
+            if (connected) {
+                const userData = getUserData();
+                setAddress(userData?.profile?.stxAddress?.testnet || '');
+            } else {
+                setAddress('');
+            }
+        });
+
+        return () => unsubscribe();
     }, []);
 
     const checkConnection = () => {
         if (userSession.isUserSignedIn()) {
-        const userData = getUserData();
-        setIsConnected(true);
-        setAddress(userData.profile.stxAddress.testnet);
+            const userData = getUserData();
+            setIsConnected(true);
+            setAddress(userData?.profile?.stxAddress?.testnet || '');
+        } else {
+            setIsConnected(false);
+            setAddress('');
         }
     };
 
     const handleConnect = () => {
-        connectWallet(
-        (data) => {
-            setIsConnected(true);
-            setAddress(data.userSession.loadUserData().profile.stxAddress.testnet);
-        },
-        () => {
-            console.log('Connection cancelled');
-        }
-        );
+        // connectWallet now takes no callbacks — internal subscribeAuth will notify on finish or cancel
+        connectWallet();
     };
 
     const handleDisconnect = () => {
@@ -52,17 +61,17 @@ const WalletConnect = () => {
             </button>
         ) : (
             <Tooltip title="Disconnect Wallet" placement="left">
-                <div className="flex items-center gap-2">
-                    <div className="bg-[#26462F] text-[#A8F0A2] px-3 py-2 rounded text-xs border border-[#3BA76F]">
-                        {truncateAddress(address)}
-                    </div>
-                    <button
-                        onClick={handleDisconnect}
-                        className="bg-[#FF7676] hover:brightness-110 text-white px-3 py-2 rounded font-bold text-xs transition-all"
-                    >
-                        DISCONNECT
-                    </button>
+            <div className="flex items-center gap-2">
+                <div className="bg-[#26462F] text-[#A8F0A2] px-3 py-2 rounded text-xs border border-[#3BA76F]">
+                {truncateAddress(address)}
                 </div>
+                <button
+                onClick={handleDisconnect}
+                className="bg-[#FF7676] hover:brightness-110 text-white px-3 py-2 rounded font-bold text-xs transition-all"
+                >
+                DISCONNECT
+                </button>
+            </div>
             </Tooltip>
         )}
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Swords,
   Trophy,
@@ -20,20 +20,17 @@ const GAME_DURATION = 40000;
 const API_CALL_INTERVAL = 1000;
 const TRAIL_LENGTH = 12;
 
-// Import your existing components (these should be separate files)
 import LeaderBoard from "./components/leader-board";
-import submitBattleResult from "./stacks/contract-constants";
+import { submitBattleToBlockchain, subscribeAuth, getUserData } from "./lib/stacksService";
 import WalletConnect from "./components/WalletConnect";
 
 const CryptoPongBattle = () => {
   // Mode state
   const [gameMode, setGameMode] = useState("normal"); // "normal" or "prediction"
-
-  // Prediction mode states
-  const [userPrediction, setUserPrediction] = useState(null);
+  const [userPrediction, setUserPrediction] = useState(null); // "A" or "B"
+  // Wallet + blockchain submission states
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [submittingToBlockchain, setSubmittingToBlockchain] = useState(false);
-
   // Core game states
   const [coins, setCoins] = useState([]);
   const [isLoadingCoins, setIsLoadingCoins] = useState(true);
@@ -97,6 +94,18 @@ const CryptoPongBattle = () => {
     }
     lastApiCallRef.current = now;
     return Promise.resolve();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeAuth((connected) => {
+      setIsWalletConnected(connected);
+    });
+
+    // set initial state based on current session
+    const initial = getUserData() ? true : false;
+    setIsWalletConnected(initial);
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -246,6 +255,7 @@ const CryptoPongBattle = () => {
       }
       return data.prices;
     } catch (error) {
+      console.log(error)
       if (attempt < 3) {
         await new Promise((resolve) =>
           setTimeout(resolve, Math.pow(2, attempt) * 1000)
@@ -464,6 +474,7 @@ const CryptoPongBattle = () => {
 
       ballTrailRef.current = [];
     } catch (error) {
+      console.log(error)
       setApiError("Failed to start battle. Please try again.");
     } finally {
       setLoadingHistorical(false);
@@ -514,11 +525,7 @@ const CryptoPongBattle = () => {
       });
 
       // Blockchain submission only in prediction mode
-      if (
-        gameMode === "prediction" &&
-        isWalletConnected &&
-        winnerSide !== "TIE"
-      ) {
+      if (gameMode === "prediction" && isWalletConnected && winnerSide !== "TIE") {
         try {
           setSubmittingToBlockchain(true);
 
@@ -535,16 +542,15 @@ const CryptoPongBattle = () => {
             scoreB: finalB,
           };
 
-          // Replace with your actual blockchain submission
-          // const result = await submitBattleResult(battleData);
+          // Use the correct function we exported in stacksService
+          const txResponse = await submitBattleToBlockchain(battleData);
 
-          const wasCorrect =
-            battleData.predictedWinner === battleData.actualWinner;
+          const wasCorrect = battleData.predictedWinner === battleData.actualWinner;
           const message = wasCorrect
             ? "✅ Correct prediction! Battle recorded on blockchain!"
             : "❌ Wrong prediction. Battle recorded on blockchain.";
-
           alert(message);
+          console.log('Submission response:', txResponse);
         } catch (error) {
           console.error("Failed to submit battle:", error);
           if (error.message !== "User canceled transaction") {
@@ -907,21 +913,7 @@ const CryptoPongBattle = () => {
         </div>
 
         {/* Wallet Connect - Only in Prediction Mode */}
-        {gameMode === "prediction" && (
-          <div className="mb-4 flex justify-center">
-            {/* Replace with your WalletConnect component */}
-            <button
-              onClick={() => setIsWalletConnected(!isWalletConnected)}
-              className={`flex items-center gap-2 px-6 py-3 rounded border-2 transition-all text-sm font-bold ${
-                isWalletConnected
-                  ? "bg-[#3BA76F] border-[#3BA76F] text-white"
-                  : "bg-transparent border-[#F5C542] text-[#F5C542] hover:bg-[#F5C542] hover:text-[#1F2E1F]"
-              }`}
-            >
-              {isWalletConnected ? "✓ Wallet Connected" : "Connect Wallet"}
-            </button>
-          </div>
-        )}
+        {gameMode !== "normal" && <WalletConnect />}
 
         {apiError && (
           <div className="mb-4 p-3 bg-[#FF7676]/20 border-2 border-[#FF7676] rounded text-[#FF7676] text-sm">
@@ -1391,14 +1383,13 @@ const CryptoPongBattle = () => {
         {/* Leaderboard - Only in Prediction Mode */}
         {gameMode === "prediction" && (
           <div className="mt-8">
-            {/* Replace with your LeaderBoard component */}
             <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-4">
               <div className="heading-font text-white text-lg mb-4 text-center">
                 LEADERBOARD
               </div>
-              <div className="text-[#9EB39F] text-sm text-center py-8">
-                Connect wallet to view leaderboard
-              </div>
+
+              {/* Now render the real LeaderBoard component and pass userAddress if present */}
+              <LeaderBoard userAddress={getUserData()?.profile?.stxAddress?.testnet} />
             </div>
           </div>
         )}

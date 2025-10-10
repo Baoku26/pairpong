@@ -1,48 +1,41 @@
 import { useState, useEffect } from 'react';
 import Tooltip from '@mui/material/Tooltip';
-import { connectWallet, disconnectWallet, getUserData, userSession, subscribeAuth } from '../lib/stacksService';
+import { connect, disconnect, isConnected, getLocalStorage } from '@stacks/connect';
 
 const WalletConnect = () => {
-    const [isConnected, setIsConnected] = useState(false);
+    const [connected, setConnected] = useState(false);
     const [address, setAddress] = useState('');
 
     useEffect(() => {
-        checkConnection();
-
-        // subscribe to auth changes
-        const unsubscribe = subscribeAuth((connected) => {
-            setIsConnected(connected);
-            if (connected) {
-                const userData = getUserData();
-                const userAddress = userData?.profile?.stxAddress?.testnet || userData?.profile?.stxAddress?.mainnet || '';
-                setAddress(userAddress);
-            } else {
-                setAddress('');
-            }
-        });
-
-        return () => unsubscribe();
+        if (isConnected()) {
+            const data = getLocalStorage();
+            const stxAddress = data?.addresses?.stx?.[0]?.address || '';
+            setConnected(true);
+            setAddress(stxAddress);
+        }
     }, []);
 
-    const checkConnection = () => {
-        if (userSession.isUserSignedIn()) {
-            const userData = getUserData();
-            const userAddress = userData?.profile?.stxAddress?.testnet || userData?.profile?.stxAddress?.mainnet || '';
-            setIsConnected(true);
-            setAddress(userAddress);
-        } else {
-            setIsConnected(false);
-            setAddress('');
+    const handleConnect = async () => {
+        try {
+            await connect();
+            const data = getLocalStorage();
+            console.log(data);
+            const stxAddress = data?.addresses?.stx?.[0]?.address || '';
+            setAddress(stxAddress);
+            setConnected(true);
+        } catch (error) {
+            console.error('Connection failed:', error);
         }
     };
 
-    const handleConnect = () => {
-        // connectWallet now takes no callbacks — internal subscribeAuth will notify on finish or cancel
-        connectWallet();
-    };
-
-    const handleDisconnect = () => {
-        disconnectWallet();
+    const handleDisconnect = async () => {
+        try {
+        await disconnect();
+        setConnected(false);
+        setAddress('');
+        } catch (error) {
+        console.error('Disconnect failed:', error);
+        }
     };
 
     const truncateAddress = (addr) => {
@@ -51,29 +44,29 @@ const WalletConnect = () => {
     };
 
     return (
-        <div className="absolute top-2 right-2 hover:brightness-110 text-white py-2 px-4 rounded transition-all text-xs font-bold border-2">
-            {!isConnected ? (
+        <div className="absolute top-2 right-2 text-white">
+        {!connected ? (
+            <button
+            onClick={handleConnect}
+            className="bg-[#3BA76F] hover:brightness-110 text-[#1F2E1F] px-4 py-2 rounded font-bold text-xs border-2 border-[#3BA76F] transition-all"
+            >
+            CONNECT WALLET
+            </button>
+        ) : (
+            <Tooltip title="Disconnect Wallet" placement="left">
+            <div className="flex items-center gap-2">
+                <div className="bg-[#26462F] text-[#A8F0A2] px-3 py-2 rounded text-xs border border-[#3BA76F]">
+                {truncateAddress(address)}
+                </div>
                 <button
-                    onClick={handleConnect}
-                    className="bg-[#3BA76F] border-[#3BA76F] hover:brightness-110 text-[#1F2E1F] px-4 py-2 rounded font-bold text-xs transition-all"
+                onClick={handleDisconnect}
+                className="bg-[#FF7676] hover:brightness-110 text-white px-3 py-2 rounded font-bold text-xs transition-all"
                 >
-                    CONNECT WALLET
+                DISCONNECT
                 </button>
-            ) : (
-                <Tooltip title="Disconnect Wallet" placement="left">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-[#26462F] text-[#A8F0A2] px-3 py-2 rounded text-xs border border-[#3BA76F]">
-                            {truncateAddress(address)}
-                        </div>
-                        <button
-                            onClick={handleDisconnect}
-                            className="bg-[#FF7676] hover:brightness-110 text-white px-3 py-2 rounded font-bold text-xs transition-all"
-                        >
-                            DISCONNECT
-                        </button>
-                    </div>
-                </Tooltip>
-            )}
+            </div>
+            </Tooltip>
+        )}
         </div>
     );
 };

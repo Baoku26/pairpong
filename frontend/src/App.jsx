@@ -21,7 +21,7 @@ const API_CALL_INTERVAL = 1000;
 const TRAIL_LENGTH = 12;
 
 import LeaderBoard from "./components/leader-board";
-import { submitBattleToBlockchain, subscribeAuth, getUserData } from "./lib/stacksService";
+import { submitBattleToBlockchain, isWalletConnected } from "./lib/stacksService";
 import WalletConnect from "./components/WalletConnect";
 
 const CryptoPongBattle = () => {
@@ -29,7 +29,7 @@ const CryptoPongBattle = () => {
   const [gameMode, setGameMode] = useState("normal"); // "normal" or "prediction"
   const [userPrediction, setUserPrediction] = useState(null); // "A" or "B"
   // Wallet + blockchain submission states
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [isConnectedWallet, setIsConnectedWallet] = useState(false);
   const [submittingToBlockchain, setSubmittingToBlockchain] = useState(false);
   // Core game states
   const [coins, setCoins] = useState([]);
@@ -97,15 +97,24 @@ const CryptoPongBattle = () => {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeAuth((connected) => {
-      setIsWalletConnected(connected);
-    });
+    const checkWalletStatus = setInterval(() => {
+      const connected = isWalletConnected();
+      setIsConnectedWallet(connected);
+    }, 2000); // Check every 2 seconds
+    
+    return () => clearInterval(checkWalletStatus);
+  }, []);
 
-    // set initial state based on current session
-    const initial = getUserData() ? true : false;
-    setIsWalletConnected(initial);
-
-    return () => unsubscribe();
+  useEffect(() => {
+    // Check wallet connection status on mount
+    setIsConnectedWallet(isWalletConnected());
+    
+    // Optionally poll for connection changes (optional)
+    const interval = setInterval(() => {
+      setIsConnectedWallet(isWalletConnected());
+    }, 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -409,7 +418,7 @@ const CryptoPongBattle = () => {
 
     // Prediction mode validation
     if (gameMode === "prediction") {
-      if (!isWalletConnected) {
+      if (!isConnectedWallet) {
         alert("Please connect your wallet to play in Prediction Mode");
         return;
       }
@@ -525,7 +534,7 @@ const CryptoPongBattle = () => {
       });
 
       // Blockchain submission only in prediction mode
-      if (gameMode === "prediction" && isWalletConnected && winnerSide !== "TIE") {
+      if (gameMode === "prediction" && isConnectedWallet && winnerSide !== "TIE") {
         try {
           setSubmittingToBlockchain(true);
 
@@ -879,7 +888,7 @@ const CryptoPongBattle = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header with Mode Toggle */}
         <div className="flex flex-col items-center mb-4 sm:mb-8">
-          <h1 className="heading-font text-2xl sm:text-3xl md:text-4xl text-white text-center mb-4 tracking-wider">
+          <h1 className="heading-font mt-10 text-2xl sm:text-3xl md:text-4xl text-green-700 text-center mb-4 tracking-wider">
             CRYPTO PONG BATTLE
           </h1>
 
@@ -1383,14 +1392,7 @@ const CryptoPongBattle = () => {
         {/* Leaderboard - Only in Prediction Mode */}
         {gameMode === "prediction" && (
           <div className="mt-8">
-            <div className="bg-[#26462F] rounded border-2 border-[#3BA76F] p-4">
-              <div className="heading-font text-white text-lg mb-4 text-center">
-                LEADERBOARD
-              </div>
-
-              {/* Now render the real LeaderBoard component and pass userAddress if present */}
-              <LeaderBoard userAddress={getUserData()?.profile?.stxAddress?.testnet} />
-            </div>
+            <LeaderBoard />
           </div>
         )}
       </div>

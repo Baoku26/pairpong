@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ChartBarIncreasingIcon, Trophy, TrendingUp } from "lucide-react";
-import { getRecentBattles, getUserStats } from "../stacks/contract-constants";
-import { getStxAddress } from "../stacks/wallet-connect";
+import { ChartBarIncreasingIcon, Trophy, TrendingUp, RefreshCw } from "lucide-react";
+import { getRecentBattles, getUserStats, getStxAddress, subscribeAuth } from "../lib/stacksService";
 
 const LeaderBoard = () => {
     const [battles, setBattles] = useState([]);
@@ -11,6 +10,13 @@ const LeaderBoard = () => {
 
     useEffect(() => {
         fetchLeaderboardData();
+
+        // Re-fetch data when user connects/disconnects wallet
+        const unsubscribe = subscribeAuth(() => {
+            fetchLeaderboardData();
+        });
+
+        return () => unsubscribe();
     }, []);
 
     const fetchLeaderboardData = async () => {
@@ -27,6 +33,8 @@ const LeaderBoard = () => {
             if (userAddress) {
                 const stats = await getUserStats(userAddress);
                 setUserStats(stats);
+            } else {
+                setUserStats(null); // Clear stats if wallet disconnected
             }
         } catch (err) {
             console.error('Error fetching leaderboard:', err);
@@ -81,14 +89,14 @@ const LeaderBoard = () => {
             <div className='bg-[#26462F] border-2 border-[#3BA76F] rounded-lg p-6'>
                 <div className="flex items-center justify-between mb-4">
                     <h3 className='text-[#A8F0A2] text-sm'>RECENT BATTLES</h3>
-                    {!loading && (
-                        <button
-                            onClick={fetchLeaderboardData}
-                            className="text-xs text-[#F5C542] hover:brightness-110"
-                        >
-                            Refresh
-                        </button>
-                    )}
+                    <button
+                        onClick={fetchLeaderboardData}
+                        disabled={loading}
+                        className="text-xs text-[#F5C542] hover:brightness-110 flex items-center gap-1 disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
                 </div>
 
                 {loading && (
@@ -116,9 +124,9 @@ const LeaderBoard = () => {
 
                 {!loading && !error && battles.length > 0 && (
                     <div className='space-y-3'>
-                        {battles.map((battle, index) => (
+                        {battles.map((battle) => (
                             <div 
-                                key={battle.id || index}
+                                key={battle.id}
                                 className='bg-[#1F2E1F] border border-[#3BA76F] rounded-lg p-4 hover:border-[#F5C542] transition-colors'
                             >
                                 <div className='flex justify-between items-start mb-2'>
@@ -148,8 +156,6 @@ const LeaderBoard = () => {
                                         </div>
                                     </div>
                                 </div>
-                                
-                                {/* Battle ID badge */}
                                 <div className='text-[#9EB39F] text-xs'>
                                     Battle #{battle.id}
                                 </div>

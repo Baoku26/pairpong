@@ -8,22 +8,22 @@ telemetry = false
 [project.requirements]
 # No external requirements
 
-[contracts.battle-leaderboard-v4]
-path = "contracts/battle-leaderboard-v4.clar"
+[contracts.battle-leaderboard-v5]
+path = "contracts/battle-leaderboard-v5.clar"
 clarity_version = 2
 epoch = 2.5
 
-[contracts.sip-009-nft-trait-v4]
-path = "sips/sip-009-nft-trait-v4.clar"
+[contracts.sip-009-nft-trait-v5]
+path = "sips/sip-009-nft-trait-v5.clar"
 clarity_version = 2
 epoch = 2.5
 
-[contracts.battle-nft-v4]
-path = "contracts/battle-nft-v4.clar"
+[contracts.battle-nft-v5]
+path = "contracts/battle-nft-v5.clar"
 clarity_version = 2
 epoch = 2.5
 
-[contracts.battle-prediction-v4]
-path = "contracts/battle-prediction-v4.clar"
+[contracts.battle-prediction-v5]
+path = "contracts/battle-prediction-v5.clar"
 clarity_version = 2
 epoch = 2.5

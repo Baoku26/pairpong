@@ -240,16 +240,16 @@ const CryptoPongBattle = () => {
       await rateLimitCheck();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
-
+      const CORS_PROXY = 'https://thingproxy.freehostingservice.com/fetch/';
+      const url = `https://api.coingecko.com/api/v3/coins/${coin.id}/market_chart?vs_currency=usd&days=${days}`;
       const response = await fetch(
-        `https://api.coingecko.com/api/v3/coins/${coin.id}/market_chart?vs_currency=usd&days=${days}`,
+        CORS_PROXY + url,
         {
           headers: {
-            Accept: "application/json",
             "Content-Type": "application/json",
           },
           signal: controller.signal,
-        }
+        } 
       );
 
       clearTimeout(timeoutId);

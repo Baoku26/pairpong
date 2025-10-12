@@ -1338,7 +1338,7 @@ const CryptoPongBattle = () => {
                       </div>
                     </div>
 
-                    <div className="text-white text-2xl px-4">VS</div>
+                    <div className="text-white text-xl px-4">VS</div>
 
                     <div className="text-center flex-1">
                       <div

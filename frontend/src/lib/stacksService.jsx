@@ -6,6 +6,7 @@ import {
   cvToJSON,
 } from '@stacks/transactions';
 import { NETWORK, CONTRACT_DEPLOYER_ADDRESS, CONTRACTS } from './stacksConfig';
+import axios from 'axios';
 
 // --- API Setup ---
 const API_BASE_URL = NETWORK.coreApiUrl || 'https://api.testnet.hiro.so';
@@ -13,21 +14,13 @@ const API_BASE_URL = NETWORK.coreApiUrl || 'https://api.testnet.hiro.so';
 // --- Helper function to call read-only functions ---
 const callReadOnlyViaAPI = async (contractAddress, contractName, functionName, args = []) => {
     try {
-        // Build arguments string
-        const argsString = args && args
-        .map(arg => (arg.toHex ? arg.toHex() : String(arg)))
-        .join('_');
+        const argsPayload = args && args.length ? encodeURIComponent(JSON.stringify(args)) : null;
 
-        const url = argsString
-        ? `${API_BASE_URL}/v2/contracts/interface/${contractAddress}/${contractName}/${functionName}?args=${argsString}`
-        : `${API_BASE_URL}/v2/contracts/interface/${contractAddress}/${contractName}/${functionName}`;
+        const url = argsPayload
+        ? `${API_BASE_URL}/v2/contract/${contractAddress}/${contractName}/${functionName}?args=${argsPayload}`
+        : `${API_BASE_URL}/v2/contract/${contractAddress}/${contractName}/${functionName}`;
 
-        const response = await fetch( 
-        url, 
-        {
-            method: "GET", 
-            headers: { 'Content-Type': 'application/json' }, 
-        });
+        const response = await axios.get(url);
         console.log('Read-only call response:', response);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -68,7 +61,7 @@ export const isWalletConnected = () => isConnected();
 // --- CONTRACT WRITE FUNCTIONS ---
 export const submitBattleToBlockchain = async (battleData) => {
     const { coinA, coinB, predictedWinner, actualWinner, performanceDelta, scoreA, scoreB } = battleData;
-    
+    console.log('Submitting battle:', battleData);
     try {
         const response = await request('stx_callContract', {
         contractAddress: CONTRACT_DEPLOYER_ADDRESS,

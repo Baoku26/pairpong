@@ -4,31 +4,50 @@ import {
   stringAsciiCV,
   principalCV,
   cvToJSON,
+  cvToHex,
+  hexToCV
 } from '@stacks/transactions';
-import { NETWORK, CONTRACT_DEPLOYER_ADDRESS, CONTRACTS } from './stacksConfig';
-import axios from 'axios';
+import { CONTRACT_DEPLOYER_ADDRESS, CONTRACTS } from './stacksConfig';
 
 // --- API Setup ---
-const API_BASE_URL = NETWORK.coreApiUrl || 'https://api.testnet.hiro.so';
+const API_BASE_URL = import.meta.env.VITE_STACKS_ENV === 'mainnet'
+    ? 'https://api.mainnet.hiro.so'
+    : 'https://api.testnet.hiro.so';
 
 // --- Helper function to call read-only functions ---
 const callReadOnlyViaAPI = async (contractAddress, contractName, functionName, args = []) => {
     try {
-        const argsPayload = args && args.length ? encodeURIComponent(JSON.stringify(args)) : null;
+        const url = `${API_BASE_URL}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`;
+        console.log("Calling read-only function....", { url, functionName, argsCount: args.length })
+        const hexArgs = args.map((arg) => cvToHex(arg))
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                sender: contractAddress,
+                arguments: hexArgs,
+            }),
+        });
 
-        const url = argsPayload
-        ? `${API_BASE_URL}/v2/contract/${contractAddress}/${contractName}/${functionName}?args=${argsPayload}`
-        : `${API_BASE_URL}/v2/contract/${contractAddress}/${contractName}/${functionName}`;
+        if (!response.ok) {
+            const errorText = await response.text()
+            console.error("API error response:", errorText)
+            throw new Error(`HTTP ${response.status}: ${errorText}`)
+        };
 
-        const response = await axios.get(url);
-        console.log('Read-only call response:', response);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json()
+        console.log("Read-only call response:", data)
 
-        const data = await response.json();
-        return data.result || data;
+        if (data.okay && data.result) {
+            return hexToCV(data.result)
+        }
+
+        throw new Error("Invalid response format")
     } catch (error) {
-        console.error('Read-only call failed:', error);
-        throw error;
+        console.error("Read-only call failed:", error)
+        throw error
     }
 };
 

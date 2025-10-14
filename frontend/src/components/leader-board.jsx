@@ -12,7 +12,7 @@ const LeaderBoard = () => {
         fetchLeaderboardData();
         
         // Set up interval to refresh battles periodically
-        const interval = setInterval(fetchLeaderboardData, 30000); // Refresh every 30 seconds
+        const interval = setInterval(fetchLeaderboardData, 60000); // Refresh every 1 minute
         
         return () => clearInterval(interval);
     }, []);

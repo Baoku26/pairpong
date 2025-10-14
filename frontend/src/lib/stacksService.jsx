@@ -40,7 +40,7 @@ const callReadOnlyViaAPI = async (contractAddress, contractName, functionName, a
         const data = await response.json();
         console.log("Read-only call response:", data);
 
-        if (data.okay && data.result) {
+        if (data.okay && data.result) { 
             console.log("Converted CV:", cvToJSON(hexToCV(data.result)));
             return hexToCV(data.result)
         }

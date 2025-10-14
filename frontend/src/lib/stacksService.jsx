@@ -37,10 +37,11 @@ const callReadOnlyViaAPI = async (contractAddress, contractName, functionName, a
             throw new Error(`HTTP ${response.status}: ${errorText}`)
         };
 
-        const data = await response.json()
-        console.log("Read-only call response:", data)
+        const data = await response.json();
+        console.log("Read-only call response:", data);
 
         if (data.okay && data.result) {
+            console.log("Converted CV:", cvToJSON(hexToCV(data.result)));
             return hexToCV(data.result)
         }
 
@@ -83,18 +84,18 @@ export const submitBattleToBlockchain = async (battleData) => {
     console.log('Submitting battle:', battleData);
     try {
         const response = await request('stx_callContract', {
-        contractAddress: CONTRACT_DEPLOYER_ADDRESS,
-        contractName: CONTRACTS.LEADERBOARD,
-        functionName: 'submit-battle',
-        functionArgs: [
-            stringAsciiCV(coinA.substring(0, 10)),
-            stringAsciiCV(coinB.substring(0, 10)),
-            stringAsciiCV(predictedWinner.substring(0, 10)),
-            stringAsciiCV(actualWinner.substring(0, 10)),
-            uintCV(Math.floor(Math.abs(performanceDelta) * 100)),
-            uintCV(scoreA),
-            uintCV(scoreB),
-        ],
+            contract: `${CONTRACT_DEPLOYER_ADDRESS}.${CONTRACTS.LEADERBOARD}`,
+            functionName: 'submit-battle',
+            functionArgs: [
+                stringAsciiCV(coinA.substring(0, 10)),
+                stringAsciiCV(coinB.substring(0, 10)),
+                stringAsciiCV(predictedWinner.substring(0, 10)),
+                stringAsciiCV(actualWinner.substring(0, 10)),
+                uintCV(Math.floor(Math.abs(performanceDelta) * 100)),
+                uintCV(scoreA),
+                uintCV(scoreB),
+            ],
+            network: import.meta.env.VITE_STACKS_ENV
         });
         return response;
     } catch (error) {
@@ -106,14 +107,14 @@ export const submitBattleToBlockchain = async (battleData) => {
 export const submitPrediction = async (coinA, coinB, predictedWinner) => {
     try {
         const response = await request('stx_callContract', {
-        contractAddress: CONTRACT_DEPLOYER_ADDRESS,
-        contractName: CONTRACTS.PREDICTION,
-        functionName: 'submit-prediction',
-        functionArgs: [
-            stringAsciiCV(coinA.substring(0, 10)),
-            stringAsciiCV(coinB.substring(0, 10)),
-            stringAsciiCV(predictedWinner.substring(0, 10)),
-        ],
+            contract: `${CONTRACT_DEPLOYER_ADDRESS}.${CONTRACTS.PREDICTION}`,
+            functionName: 'submit-prediction',
+            functionArgs: [
+                stringAsciiCV(coinA.substring(0, 10)),
+                stringAsciiCV(coinB.substring(0, 10)),
+                stringAsciiCV(predictedWinner.substring(0, 10)),
+            ],
+            network: import.meta.env.VITE_STACKS_ENV
         });
         return response;
     } catch (error) {
@@ -125,10 +126,10 @@ export const submitPrediction = async (coinA, coinB, predictedWinner) => {
 export const settlePrediction = async (predictionId) => {
     try {
         const response = await request('stx_callContract', {
-        contractAddress: CONTRACT_DEPLOYER_ADDRESS,
-        contractName: CONTRACTS.PREDICTION,
-        functionName: 'settle-prediction',
-        functionArgs: [uintCV(predictionId)],
+            contract: `${CONTRACT_DEPLOYER_ADDRESS}.${CONTRACTS.PREDICTION}`,
+            functionName: 'settle-prediction',
+            functionArgs: [uintCV(predictionId)],
+            network: import.meta.env.VITE_STACKS_ENV
         });
         return response;
     } catch (error) {
@@ -140,13 +141,13 @@ export const settlePrediction = async (predictionId) => {
 export const mintBattleNFT = async (recipient, metadataUri) => {
     try {
         const response = await request('stx_callContract', {
-        contractAddress: CONTRACT_DEPLOYER_ADDRESS,
-        contractName: CONTRACTS.NFT,
-        functionName: 'mint-battle-nft',
-        functionArgs: [
-            principalCV(recipient),
-            stringAsciiCV(metadataUri.substring(0, 256)),
-        ],
+            contract: `${CONTRACT_DEPLOYER_ADDRESS}.${CONTRACTS.NFT}`,
+            functionName: 'mint-battle-nft',
+            functionArgs: [
+                principalCV(recipient),
+                stringAsciiCV(metadataUri.substring(0, 256)),
+            ],
+            network: import.meta.env.VITE_STACKS_ENV
         });
         return response;
     } catch (error) {
@@ -162,19 +163,21 @@ export const getUserStats = async (userAddress) => {
 
     try {
         const result = await callReadOnlyViaAPI(
-        CONTRACT_DEPLOYER_ADDRESS,
-        CONTRACTS.LEADERBOARD,
-        'get-user-stats',
-        [principalCV(addr)]
+            CONTRACT_DEPLOYER_ADDRESS,
+            CONTRACTS.LEADERBOARD,
+            'get-leaderboard-stats',
+            [principalCV(addr)]
         );
         
         const json = cvToJSON(result);
         const stats = json?.value?.value || {};
         
         return {
-        wins: parseInt(stats.wins?.value || 0),
-        losses: parseInt(stats.losses?.value || 0),
-        highestDelta: parseInt(stats['highest-delta']?.value || 0) / 100,
+            wins: Number(stats["correct-predictions"]?.value || 0),
+            losses: Number(stats["wrong-predictions"]?.value || 0),
+            totalPredictions: Number(stats["total-predictions"]?.value || 0),
+            points: Number(stats.points?.value || 0),
+            highestDelta: Number(stats["highest-delta"]?.value || 0),
         };
     } catch (error) {
         console.error('Error fetching user stats:', error);
@@ -202,10 +205,10 @@ export const getBattleCount = async () => {
 export const getBattleById = async (battleId) => {
     try {
         const result = await callReadOnlyViaAPI(
-        CONTRACT_DEPLOYER_ADDRESS,
-        CONTRACTS.LEADERBOARD,
-        'get-battle-by-id',
-        [uintCV(battleId)]
+            CONTRACT_DEPLOYER_ADDRESS,
+            CONTRACTS.LEADERBOARD,
+            'get-battle-by-id',
+            [uintCV(battleId)]
         );
         
         const json = cvToJSON(result);
@@ -219,12 +222,12 @@ export const getBattleById = async (battleId) => {
         : battleData['coin-a']?.value;
         
         return {
-        player: battleData.player?.value,
-        winner,
-        loser,
-        delta: parseInt(battleData['performance-delta']?.value || 0) / 100,
-        scoreA: parseInt(battleData['score-a']?.value || 0),
-        scoreB: parseInt(battleData['score-b']?.value || 0),
+            player: battleData.player?.value,
+            winner,
+            loser,
+            delta: Number(battleData.delta?.value || 0),
+            scoreA: Number(battleData['score-a']?.value || 0),
+            scoreB: Number(battleData['score-b']?.value || 0),
         };
     } catch (error) {
         console.error(`Error fetching battle ID ${battleId}:`, error);
@@ -253,10 +256,10 @@ export const getRecentBattles = async (count = 10) => {
 export const getPrediction = async (predictionId) => {
     try {
         const result = await callReadOnlyViaAPI(
-        CONTRACT_DEPLOYER_ADDRESS,
-        CONTRACTS.PREDICTION,
-        'get-prediction',
-        [uintCV(predictionId)]
+            CONTRACT_DEPLOYER_ADDRESS,
+            CONTRACTS.PREDICTION,
+            'get-prediction',
+            [uintCV(predictionId)]
         );
         
         return cvToJSON(result)?.value || null;

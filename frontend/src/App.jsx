@@ -894,7 +894,7 @@ const CryptoPongBattle = () => {
         {/* Header with Mode Toggle */}
         <div className="flex flex-col items-center mb-4 sm:mb-8">
           <h1 className="heading-font mt-10 text-2xl sm:text-3xl md:text-4xl text-green-700 text-center mb-4 tracking-wider">
-            CRYPTO PONG BATTLE
+            PAIRPONG
           </h1>
 
           {/* Mode Toggle */}

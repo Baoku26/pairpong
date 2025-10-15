@@ -21,7 +21,10 @@ const API_CALL_INTERVAL = 1000;
 const TRAIL_LENGTH = 12;
 
 import LeaderBoard from "./components/leader-board";
-import { submitBattleToBlockchain, isWalletConnected } from "./lib/stacksService";
+import {
+  submitBattleToBlockchain,
+  isWalletConnected,
+} from "./lib/stacksService";
 import WalletConnect from "./components/WalletConnect";
 
 const CryptoPongBattle = () => {
@@ -101,19 +104,19 @@ const CryptoPongBattle = () => {
       const connected = isWalletConnected();
       setIsConnectedWallet(connected);
     }, 2000); // Check every 2 seconds
-    
+
     return () => clearInterval(checkWalletStatus);
   }, []);
 
   useEffect(() => {
     // Check wallet connection status on mount
     setIsConnectedWallet(isWalletConnected());
-    
+
     // Optionally poll for connection changes (optional)
     const interval = setInterval(() => {
       setIsConnectedWallet(isWalletConnected());
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -240,17 +243,14 @@ const CryptoPongBattle = () => {
       await rateLimitCheck();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const CORS_PROXY = 'https://thingproxy.freehostingservice.com/fetch/';
+      const CORS_PROXY = "https://thingproxy.freehostingservice.com/fetch/";
       const url = `https://api.coingecko.com/api/v3/coins/${coin.id}/market_chart?vs_currency=usd&days=${days}`;
-      const response = await fetch(
-        CORS_PROXY + url,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: controller.signal,
-        } 
-      );
+      const response = await fetch(CORS_PROXY + url, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
 
       clearTimeout(timeoutId);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -264,7 +264,7 @@ const CryptoPongBattle = () => {
       }
       return data.prices;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       if (attempt < 3) {
         await new Promise((resolve) =>
           setTimeout(resolve, Math.pow(2, attempt) * 1000)
@@ -483,7 +483,7 @@ const CryptoPongBattle = () => {
 
       ballTrailRef.current = [];
     } catch (error) {
-      console.log(error)
+      console.log(error);
       setApiError("Failed to start battle. Please try again.");
     } finally {
       setLoadingHistorical(false);
@@ -534,7 +534,11 @@ const CryptoPongBattle = () => {
       });
 
       // Blockchain submission only in prediction mode
-      if (gameMode === "prediction" && isConnectedWallet && winnerSide !== "TIE") {
+      if (
+        gameMode === "prediction" &&
+        isConnectedWallet &&
+        winnerSide !== "TIE"
+      ) {
         try {
           setSubmittingToBlockchain(true);
 
@@ -554,12 +558,13 @@ const CryptoPongBattle = () => {
           // Use the correct function we exported in stacksService
           const txResponse = await submitBattleToBlockchain(battleData);
 
-          const wasCorrect = battleData.predictedWinner === battleData.actualWinner;
+          const wasCorrect =
+            battleData.predictedWinner === battleData.actualWinner;
           const message = wasCorrect
             ? "✅ Correct prediction! Battle recorded on blockchain!"
             : "❌ Wrong prediction. Battle recorded on blockchain.";
           alert(message);
-          console.log('Submission response:', txResponse);
+          console.log("Submission response:", txResponse);
         } catch (error) {
           console.error("Failed to submit battle:", error);
           if (error.message !== "User canceled transaction") {
